@@ -114,21 +114,24 @@
                 <label>WebSocket URL:</label>
                 <input type="text" id="wsUrl" value="ws://localhost:8080/ws">
             </div>
+            <div class="form-group">
+                <label>JWT Token:</label>
+                <input type="text" id="jwtToken" value="" placeholder="Paste JWT token here">
+            </div>
             <button id="connectBtn" onclick="connect()">Connect</button>
             <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
+            <button onclick="generateTestToken()">Generate Test Token</button>
             
-            <h2>Authentication</h2>
-            <div class="form-group">
-                <label>User ID:</label>
-                <input type="text" id="userId" value="user123">
-            </div>
-            <div class="form-group">
-                <label>Password:</label>
-                <input type="password" id="password" value="secret">
-            </div>
-            <button onclick="login()">Login</button>
-            <button onclick="register()">Register (Balance: 1000)</button>
+            <h2>User Info</h2>
             <button onclick="getBalance()">Get Balance</button>
+            
+            <h2>Balance Operations</h2>
+            <div class="form-group">
+                <label>Amount:</label>
+                <input type="number" id="balanceAmount" value="100">
+            </div>
+            <button onclick="addBalance()">Add Balance</button>
+            <button onclick="withdrawBalance()">Withdraw Balance</button>
             
             <h2>Auction Operations</h2>
             <div class="form-group">
@@ -178,9 +181,17 @@
         
         function connect() {
             const url = document.getElementById('wsUrl').value;
+            const token = document.getElementById('jwtToken').value;
+            
+            if (!token) {
+                addMessage('❌ Please provide a JWT token!', 'error');
+                return;
+            }
+            
+            const wsUrl = url + '?token=' + encodeURIComponent(token);
             addMessage('Connecting to ' + url + '...', 'info');
             
-            ws = new WebSocket(url);
+            ws = new WebSocket(wsUrl);
             
             ws.onopen = () => {
                 addMessage('✅ Connected!', 'success');
@@ -224,26 +235,39 @@
             ws.send(JSON.stringify(msg));
         }
         
-        function login() {
-            send({
-                type: 'login',
-                user_id: document.getElementById('userId').value,
-                password: document.getElementById('password').value
-            });
-        }
-        
-        function register() {
-            send({
-                type: 'register',
-                user_id: document.getElementById('userId').value,
-                username: document.getElementById('userId').value,
-                password: document.getElementById('password').value,
-                balance: 1000.0
-            });
+        function generateTestToken() {
+            // Generate a simple test token (NOT FOR PRODUCTION!)
+            // In real use, this would come from your auth server
+            const userId = 'user' + Math.floor(Math.random() * 1000);
+            const expireDate = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+            
+            // This is just a placeholder - in production, you'd sign with private key
+            const payload = btoa(JSON.stringify({userid: userId, expiredate: expireDate}));
+            const testToken = 'TEST.' + payload + '.SIGNATURE';
+            
+            document.getElementById('jwtToken').value = testToken;
+            addMessage('Generated test token for user: ' + userId, 'info');
+            addMessage('⚠️ Note: This is an unsigned test token. Server needs proper JWT verification disabled for testing!', 'error');
         }
         
         function getBalance() {
             send({ type: 'get_balance' });
+        }
+        
+        function addBalance() {
+            const amount = parseFloat(document.getElementById('balanceAmount').value);
+            send({
+                type: 'add_balance',
+                amount: amount
+            });
+        }
+        
+        function withdrawBalance() {
+            const amount = parseFloat(document.getElementById('balanceAmount').value);
+            send({
+                type: 'withdraw_balance',
+                amount: amount
+            });
         }
         
         function createAuction() {

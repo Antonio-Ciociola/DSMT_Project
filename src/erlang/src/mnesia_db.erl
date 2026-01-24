@@ -23,6 +23,8 @@
     get_user/1,
     get_user_balance/1,
     update_user_balance/2,
+    add_balance/2,
+    withdraw_balance/2,
     
     %% Auction operations
     add_auction/7,
@@ -262,6 +264,51 @@ update_user_balance(Username, NewBalance) ->
         {atomic, Result} -> Result;
         {aborted, Reason} -> {error, Reason}
     end.
+
+%% @doc Add amount to user balance
+add_balance(Username, Amount) when Amount > 0 ->
+    F = fun() ->
+        case mnesia:read(user, Username) of
+            [User] ->
+                NewBalance = User#user.balance + Amount,
+                UpdatedUser = User#user{balance = NewBalance},
+                mnesia:write(UpdatedUser),
+                {ok, NewBalance};
+            [] ->
+                {error, user_not_found}
+        end
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Result} -> Result;
+        {aborted, Reason} -> {error, Reason}
+    end;
+add_balance(_Username, _Amount) ->
+    {error, invalid_amount}.
+
+%% @doc Withdraw amount from user balance
+withdraw_balance(Username, Amount) when Amount > 0 ->
+    F = fun() ->
+        case mnesia:read(user, Username) of
+            [User] ->
+                case User#user.balance >= Amount of
+                    true ->
+                        NewBalance = User#user.balance - Amount,
+                        UpdatedUser = User#user{balance = NewBalance},
+                        mnesia:write(UpdatedUser),
+                        {ok, NewBalance};
+                    false ->
+                        {error, insufficient_balance}
+                end;
+            [] ->
+                {error, user_not_found}
+        end
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Result} -> Result;
+        {aborted, Reason} -> {error, Reason}
+    end;
+withdraw_balance(_Username, _Amount) ->
+    {error, invalid_amount}.
 
 %%%===================================================================
 %%% Auction operations

@@ -28,12 +28,37 @@
 %% @doc Initialize the WebSocket connection
 init(Req, _State) ->
     io:format("[WS] New WebSocket connection~n"),
-    {cowboy_websocket, Req, #state{}}.
+    %% Extract JWT token from query parameter
+    #{token := Token} = cowboy_req:match_qs([{token, [], undefined}], Req),
+    
+    case Token of
+        undefined ->
+            io:format("[WS] No JWT token provided~n"),
+            {ok, cowboy_req:reply(401, #{}, <<"No JWT token">>, Req), #state{}};
+        _ ->
+            %% Verify JWT and extract user_id
+            case verify_jwt(Token) of
+                {ok, UserId} ->
+                    io:format("[WS] JWT verified for user: ~p~n", [UserId]),
+                    {cowboy_websocket, Req, #state{user_id = list_to_binary(UserId)}};
+                {error, Reason} ->
+                    io:format("[WS] JWT verification failed: ~p~n", [Reason]),
+                    {ok, cowboy_req:reply(401, #{}, <<"Invalid JWT">>, Req), #state{}}
+            end
+    end.
 
 %% @doc Called after WebSocket upgrade
 websocket_init(State) ->
-    io:format("[WS] WebSocket initialized~n"),
-    {ok, State}.
+    case State#state.user_id of
+        undefined ->
+            io:format("[WS] WebSocket initialized without user~n"),
+            {ok, State};
+        UserId ->
+            io:format("[WS] WebSocket initialized for user: ~p~n", [UserId]),
+            %% Ensure user exists in database, create if not
+            ensure_user_exists(binary_to_list(UserId)),
+            {ok, State}
+    end.
 
 %% @doc Handle incoming WebSocket messages from client
 websocket_handle({text, Json}, State) ->
@@ -87,50 +112,6 @@ terminate(_Reason, _Req, State) ->
 %%% Internal Message Handlers
 %%%===================================================================
 
-%% Register new user
-handle_message(#{<<"type">> := <<"register">>, 
-                 <<"user_id">> := UserId,
-                 <<"password">> := Password,
-                 <<"balance">> := Balance}, State) ->
-    io:format("[SERVER] Registering user: ~p~n", [UserId]),
-    case server:register_user(binary_to_list(UserId), binary_to_list(Password), Balance) of
-        {ok, _Username} ->
-            Response = jsx:encode(#{
-                type => <<"register_response">>,
-                success => true,
-                user_id => UserId
-            }),
-            {reply, {text, Response}, State#state{user_id = UserId}};
-                {error, Reason} ->
-            Response = jsx:encode(#{
-                type => <<"register_response">>,
-                success => false,
-                error => format_error(Reason)
-            }),
-            {reply, {text, Response}, State}
-    end;
-
-%% Authenticate user
-handle_message(#{<<"type">> := <<"login">>,
-                 <<"user_id">> := UserId,
-                 <<"password">> := Password}, State) ->
-    case server:authenticate_user(binary_to_list(UserId), binary_to_list(Password)) of
-        {ok, authenticated} ->
-            Response = jsx:encode(#{
-                type => <<"login_response">>,
-                success => true,
-                user_id => UserId
-            }),
-            {reply, {text, Response}, State#state{user_id = UserId}};
-        {error, Reason} ->
-            Response = jsx:encode(#{
-                type => <<"login_response">>,
-                success => false,
-                error => format_error(Reason)
-            }),
-            {reply, {text, Response}, State}
-    end;
-
 %% Get user balance
 handle_message(#{<<"type">> := <<"get_balance">>}, State) ->
     case State#state.user_id of
@@ -146,6 +127,56 @@ handle_message(#{<<"type">> := <<"get_balance">>}, State) ->
                     {reply, {text, Response}, State};
                 {error, Reason} ->
                     error_response(format_error(Reason), State)
+            end
+    end;
+
+%% Add balance to user account
+handle_message(#{<<"type">> := <<"add_balance">>,
+                 <<"amount">> := Amount}, State) ->
+    case State#state.user_id of
+        undefined ->
+            error_response(<<"Not authenticated">>, State);
+        UserId ->
+            case server:add_balance(binary_to_list(UserId), Amount) of
+                {ok, NewBalance} ->
+                    Response = jsx:encode(#{
+                        type => <<"add_balance_response">>,
+                        success => true,
+                        new_balance => NewBalance
+                    }),
+                    {reply, {text, Response}, State};
+                {error, Reason} ->
+                    Response = jsx:encode(#{
+                        type => <<"add_balance_response">>,
+                        success => false,
+                        error => format_error(Reason)
+                    }),
+                    {reply, {text, Response}, State}
+            end
+    end;
+
+%% Withdraw balance from user account
+handle_message(#{<<"type">> := <<"withdraw_balance">>,
+                 <<"amount">> := Amount}, State) ->
+    case State#state.user_id of
+        undefined ->
+            error_response(<<"Not authenticated">>, State);
+        UserId ->
+            case server:withdraw_balance(binary_to_list(UserId), Amount) of
+                {ok, NewBalance} ->
+                    Response = jsx:encode(#{
+                        type => <<"withdraw_balance_response">>,
+                        success => true,
+                        new_balance => NewBalance
+                    }),
+                    {reply, {text, Response}, State};
+                {error, Reason} ->
+                    Response = jsx:encode(#{
+                        type => <<"withdraw_balance_response">>,
+                        success => false,
+                        error => format_error(Reason)
+                    }),
+                    {reply, {text, Response}, State}
             end
     end;
 
@@ -335,3 +366,91 @@ format_auction(_) ->
 format_winner(none) -> null;
 format_winner(Winner) when is_list(Winner) -> list_to_binary(Winner);
 format_winner(Winner) -> Winner.
+
+%% @doc Verify JWT token and extract user_id
+verify_jwt(Token) ->
+    %% Check for test token first
+    case binary:split(Token, <<".">>, [global]) of
+        [<<"TEST">>, Payload, _Sig] ->
+            %% Decode test token (NOT FOR PRODUCTION!)
+            verify_test_token(Payload);
+        _ ->
+            %% Try real JWT verification
+            verify_real_jwt(Token)
+    end.
+
+%% Verify test token (for development)
+verify_test_token(Payload) ->
+    try
+        PayloadJson = base64:decode(Payload),
+        #{<<"userid">> := UserId, <<"expiredate">> := ExpireDate} = 
+            jsx:decode(PayloadJson, [return_maps]),
+        
+        %% Check expiration
+        CurrentTime = os:system_time(second),
+        case ExpireDate > CurrentTime of
+            true ->
+                {ok, binary_to_list(UserId)};
+            false ->
+                {error, token_expired}
+        end
+    catch
+        _:_ -> 
+            {error, invalid_token_format}
+    end.
+
+%% Verify real JWT with public key
+verify_real_jwt(Token) ->
+    try
+        case application:get_env(auction_app, jwt_public_key) of
+            {ok, PublicKeyPem} ->
+                %% Parse the PEM key
+                JWK = jose_jwk:from_pem(PublicKeyPem),
+                
+                %% Verify and decode JWT
+                case jose_jwt:verify(JWK, Token) of
+                    {true, PayloadBin, _JWS} ->
+                        %% Extract claims
+                        Claims = jsx:decode(PayloadBin, [return_maps]),
+                        #{<<"userid">> := UserId, <<"expiredate">> := ExpireDate} = Claims,
+                        
+                        %% Check expiration
+                        CurrentTime = os:system_time(second),
+                        case ExpireDate > CurrentTime of
+                            true ->
+                                {ok, binary_to_list(UserId)};
+                            false ->
+                                {error, token_expired}
+                        end;
+                    {false, _, _} ->
+                        {error, invalid_signature}
+                end;
+            undefined ->
+                {error, no_public_key_configured}
+        end
+    catch
+        _:Error ->
+            io:format("[WS] JWT verification error: ~p~n", [Error]),
+            {error, jwt_verification_failed}
+    end.
+
+%% @doc Ensure user exists in database, create if not
+ensure_user_exists(UserId) ->
+    case mnesia_db:get_user(UserId) of
+        {ok, _User} ->
+            io:format("[WS] User ~p exists~n", [UserId]),
+            ok;
+        {error, not_found} ->
+            io:format("[WS] Creating new user ~p with 0 balance~n", [UserId]),
+            case mnesia_db:add_user(UserId, "", 0) of
+                {ok, _Username} ->
+                    io:format("[WS] User ~p created successfully~n", [UserId]),
+                    ok;
+                {error, Reason} ->
+                    io:format("[WS] Failed to create user ~p: ~p~n", [UserId, Reason]),
+                    {error, Reason}
+            end;
+        {error, Reason} ->
+            io:format("[WS] Error checking user ~p: ~p~n", [UserId, Reason]),
+            {error, Reason}
+    end.

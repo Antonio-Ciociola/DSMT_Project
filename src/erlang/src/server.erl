@@ -21,6 +21,8 @@
     authenticate_user/2,
     get_balance/1,
     deposit_funds/2,
+    add_balance/2,
+    withdraw_balance/2,
     
     %% Auction management
     create_auction/6,
@@ -84,6 +86,14 @@ get_balance(Username) ->
 %% @doc Deposit funds to user account
 deposit_funds(Username, Amount) ->
     gen_server:call(?MODULE, {deposit, Username, Amount}).
+
+%% @doc Add balance to user account
+add_balance(Username, Amount) ->
+    gen_server:call(?MODULE, {add_balance, Username, Amount}).
+
+%% @doc Withdraw balance from user account
+withdraw_balance(Username, Amount) ->
+    gen_server:call(?MODULE, {withdraw_balance, Username, Amount}).
 
 %% @doc Create a new auction
 create_auction(Creator, ItemName, MinBid, BidIncrement, Duration, StartTime) ->
@@ -185,6 +195,14 @@ handle_call({deposit, Username, Amount}, _From, State) ->
         Error ->
             {reply, Error, State}
     end;
+
+handle_call({add_balance, Username, Amount}, _From, State) ->
+    Result = mnesia_db:add_balance(Username, Amount),
+    {reply, Result, State};
+
+handle_call({withdraw_balance, Username, Amount}, _From, State) ->
+    Result = mnesia_db:withdraw_balance(Username, Amount),
+    {reply, Result, State};
 
 %%%===================================================================
 %%% Auction management handlers

@@ -41,7 +41,11 @@ start(Port) ->
     {ok, _} = cowboy:start_clear(
         ListenerName,
         [{port, Port}],
-        #{env => #{dispatch => Dispatch}}
+        #{
+            env => #{dispatch => Dispatch},
+            idle_timeout => infinity,  % WebSocket idle timeout (infinity = never timeout)
+            request_timeout => 600000   % HTTP request timeout (10 minutes)
+        }
     ),
     
     io:format("[HTTP] Server started successfully on http://localhost:~p~n", [Port]),
