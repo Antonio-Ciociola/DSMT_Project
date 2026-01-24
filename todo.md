@@ -4,7 +4,6 @@
 
 ## Backend Java
 
-- Threadpooling
 - Re-Factoring code (the controller code should be reduced, blocks
 of code accessing the DB or validating parameters should be put in 
 different files under a utility or service directory)
