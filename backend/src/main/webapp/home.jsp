@@ -198,6 +198,11 @@
                 <div class="feature-icon">🗑️</div>
                 <h3>Delete Auctions</h3>
                 <p>Remove your auctions that are no longer needed or manage your active listings.</p>
+                <% if ("Guest".equals(username)) { %>
+                    <a href="${pageContext.request.contextPath}/login.jsp" class="feature-link">Get Started</a>
+                <% } else { %>
+                    <a href="${pageContext.request.contextPath}/delete-auction" class="feature-link">Get Started</a>
+                <% } %>
             </div>
             
             <div class="feature-card">

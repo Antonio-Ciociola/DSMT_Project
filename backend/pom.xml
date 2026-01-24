@@ -30,6 +30,13 @@
             <version>3.0.0</version>
         </dependency>
 
+        <!-- JSTL implementation (required at runtime) -->
+        <dependency>
+            <groupId>org.glassfish.web</groupId>
+            <artifactId>jakarta.servlet.jsp.jstl</artifactId>
+            <version>3.0.1</version>
+        </dependency>
+
         <!-- MySQL JDBC Driver -->
         <dependency>
             <groupId>mysql</groupId>
