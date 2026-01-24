@@ -131,6 +131,24 @@
             font-size: 40px;
             margin-bottom: 15px;
         }
+        
+        .feature-link {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .feature-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -162,12 +180,18 @@
                 <div class="feature-icon">📦</div>
                 <h3>Browse Auctions</h3>
                 <p>Explore active auctions and find items of interest. Filter by category and price range.</p>
+                <a href="${pageContext.request.contextPath}/browse-auctions" class="feature-link">Get Started</a>
             </div>
             
             <div class="feature-card">
                 <div class="feature-icon">🏷️</div>
                 <h3>Create Auction</h3>
                 <p>List your own items for auction. Set starting price, duration, and detailed descriptions.</p>
+                <% if ("Guest".equals(username)) { %>
+                    <a href="${pageContext.request.contextPath}/login.jsp" class="feature-link">Get Started</a>
+                <% } else { %>
+                    <a href="${pageContext.request.contextPath}/create-auction" class="feature-link">Get Started</a>
+                <% } %>
             </div>
             
             <div class="feature-card">

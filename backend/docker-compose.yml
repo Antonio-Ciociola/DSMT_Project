@@ -1,43 +1,75 @@
 version: '3.8'
 
 services:
-  # MySQL Database
+
+  ### MySQL Database
   mysql:
+
+    ### Using MySQL 8.0 official image 
     image: mysql:8.0
     container_name: auction-mysql
+
+    ### MySQL Configuration 
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: auction_system
-      MYSQL_USER: auction_user
-      MYSQL_PASSWORD: auction_password
+      MYSQL_ROOT_PASSWORD: rootpassword  # Sets the root password
+      MYSQL_DATABASE: auction_system     # Creates the database on startup with the given name
+      MYSQL_USER: auction_user           # Creates a user with the given name
+      MYSQL_PASSWORD: auction_password   # Sets the password for the above user
+
+    ### Port mapping to expose MySQL on the host machine (default MySQL port 3306)
+    # since communication with mysql is internal to the docker network there is no need to
+    # expose it to the host machine, but it can be useful for debugging (e.g. connecting 
+    # with a MySQL client from the host to troubleshoot issues)
     ports:
       - "3306:3306"
+    
+    ### Volumes for data persistence and initialization script
+    # The mysql_data volume will persist the database data across container restarts, to 
+    # remove it simply delete the volume
+    # The init.sql file is mounted to initialize the database schema and seed data on 
+    # first run, if you need to change the schema, modify init.sql, delete the volume, and
+    # restart the container (if you don't delete the volume the init script will not run again)
     volumes:
       - mysql_data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+    ### Healthcheck to ensure MySQL is ready before the backend tries to connect
+    # This uses the mysqladmin ping command to check if the server is up
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Java Backend
+  ### Java Backend
   backend:
+
+    ### Build configuration for the backend service
+    # Fetches the Dockerfile in the current directory to build the image
     build:
       context: .
       dockerfile: Dockerfile
     container_name: auction-backend
+    
+    ### Port mapping to expose the backend service on port 8080
     ports:
       - "8080:8080"
+    
+    ### Environment variables for database connection
+    # These should match the MySQL service configuration and will be used by the backend 
+    # to connect to the database 
     environment:
       DB_URL: jdbc:mysql://mysql:3306/auction_system
       DB_USER: auction_user
       DB_PASSWORD: auction_password
+
+    ### Service dependencies
+    # Ensures that the backend service starts only after the MySQL service is healthy (i.e. 
+    # container is running and MySQL is answering pings)
     depends_on:
       mysql:
         condition: service_healthy
-    links:
-      - mysql
 
+### Define named volumes for data persistence
 volumes:
-  mysql_data:
+  mysql_data: # Persists MySQL data across container restarts

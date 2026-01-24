@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS auctions (
     title VARCHAR(200) NOT NULL,
     description TEXT,
     starting_price DECIMAL(10, 2) NOT NULL,
+    min_bid_increment DECIMAL(10, 2) NOT NULL,
+    countdown_timer INT NOT NULL,
+    start_date DATETIME NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
