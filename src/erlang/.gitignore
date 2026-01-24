@@ -1,0 +1,5 @@
+_build/*
+other_project/*
+Mnesia*/*
+ebin/*
+rebar.lock

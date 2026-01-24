@@ -1,0 +1,20 @@
+{application, auction_app, [
+    {description, "Distributed Auction System with WebSocket Support"},
+    {vsn, "1.0.0"},
+    {registered, [server, auction_supervisor]},
+    {mod, {auction_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        mnesia,
+        crypto,
+        cowlib,
+        ranch,
+        cowboy,
+        jsx
+    ]},
+    {env, []},
+    {modules, []},
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.
