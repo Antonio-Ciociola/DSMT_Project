@@ -209,6 +209,11 @@
                 <div class="feature-icon">💰</div>
                 <h3>Manage Balance</h3>
                 <p>View your account balance, deposit funds, and track your transaction history.</p>
+                <% if ("Guest".equals(username)) { %>
+                    <a href="${pageContext.request.contextPath}/login.jsp" class="feature-link">Get Started</a>
+                <% } else { %>
+                    <a href="${pageContext.request.contextPath}/balance" class="feature-link">Get Started</a>
+                <% } %>
             </div>
         </div>
     </div>
