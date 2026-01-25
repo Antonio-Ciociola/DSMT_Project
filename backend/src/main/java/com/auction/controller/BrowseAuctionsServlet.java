@@ -13,7 +13,7 @@ import java.util.List;
 
 /**
  * Servlet implementation class BrowseAuctionsServlet
- * It handles requests to browse all upcoming auctions.
+ * It handles requests to browse all auctions (ongoing, upcoming, finished).
  */
 @WebServlet("/browse-auctions")
 public class BrowseAuctionsServlet extends HttpServlet {
@@ -22,7 +22,7 @@ public class BrowseAuctionsServlet extends HttpServlet {
     private final AuctionService auctionService = new AuctionService();
 
     /**
-     * Handles GET requests to display all upcoming auctions.
+     * Handles GET requests to display all auctions.
      * @param request  the HttpServletRequest object
      * @param response the HttpServletResponse object
      * @throws ServletException if a servlet-specific error occurs
@@ -32,9 +32,9 @@ public class BrowseAuctionsServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        // Fetch upcoming auctions from the service layer
+        // Fetch all auctions from the service layer
         try {
-            List<Auction> auctions = auctionService.getUpcomingAuctions();
+            List<Auction> auctions = auctionService.getAllAuctions();
             request.setAttribute("auctions", auctions);
         } 
         // Handle SQL exceptions during auction retrieval

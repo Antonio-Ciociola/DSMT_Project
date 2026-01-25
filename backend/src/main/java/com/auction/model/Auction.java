@@ -9,9 +9,14 @@ public class Auction {
     private String description;
     private double startingPrice;
     private double minBidIncrement;
-    private int countdownTimer;
     private LocalDateTime startDate;
     private String ownerUsername;
+    private String status;
+    private Integer winnerUserId;
+    private String winnerUsername;
+    private Double finalPrice;
+    private int initialWaitTime;
+    private int bidTimeIncrement;
 
     public int getId() {
         return id;
@@ -61,14 +66,6 @@ public class Auction {
         this.minBidIncrement = minBidIncrement;
     }
 
-    public int getCountdownTimer() {
-        return countdownTimer;
-    }
-
-    public void setCountdownTimer(int countdownTimer) {
-        this.countdownTimer = countdownTimer;
-    }
-
     public LocalDateTime getStartDate() {
         return startDate;
     }
@@ -83,5 +80,53 @@ public class Auction {
 
     public void setOwnerUsername(String ownerUsername) {
         this.ownerUsername = ownerUsername;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public Integer getWinnerUserId() {
+        return winnerUserId;
+    }
+
+    public void setWinnerUserId(Integer winnerUserId) {
+        this.winnerUserId = winnerUserId;
+    }
+
+    public String getWinnerUsername() {
+        return winnerUsername;
+    }
+
+    public void setWinnerUsername(String winnerUsername) {
+        this.winnerUsername = winnerUsername;
+    }
+
+    public Double getFinalPrice() {
+        return finalPrice;
+    }
+
+    public void setFinalPrice(Double finalPrice) {
+        this.finalPrice = finalPrice;
+    }
+
+    public int getInitialWaitTime() {
+        return initialWaitTime;
+    }
+
+    public void setInitialWaitTime(int initialWaitTime) {
+        this.initialWaitTime = initialWaitTime;
+    }
+
+    public int getBidTimeIncrement() {
+        return bidTimeIncrement;
+    }
+
+    public void setBidTimeIncrement(int bidTimeIncrement) {
+        this.bidTimeIncrement = bidTimeIncrement;
     }
 }

@@ -77,7 +77,8 @@ public class CreateAuctionServlet extends HttpServlet {
         String description = request.getParameter("description");
         String startingPriceStr = request.getParameter("startingPrice");
         String minBidIncrementStr = request.getParameter("minBidIncrement");
-        String countdownTimerStr = request.getParameter("countdownTimer");
+        String initialWaitTimeStr = request.getParameter("initialWaitTime");
+        String bidTimeIncrementStr = request.getParameter("bidTimeIncrement");
         String startDateStr = request.getParameter("startDate");
         String startTimeStr = request.getParameter("startTime");
 
@@ -103,13 +104,6 @@ public class CreateAuctionServlet extends HttpServlet {
             return;
         }
 
-        error = ValidationUtils.validateRequired(countdownTimerStr, "Countdown timer");
-        if (error != null) {
-            request.setAttribute("errorMessage", error);
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-
         error = ValidationUtils.validateRequired(startDateStr, "Start date");
         if (error != null) {
             request.setAttribute("errorMessage", error);
@@ -124,16 +118,32 @@ public class CreateAuctionServlet extends HttpServlet {
             return;
         }
 
+        error = ValidationUtils.validateRequired(initialWaitTimeStr, "Initial wait time");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
+            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
+            return;
+        }
+
+        error = ValidationUtils.validateRequired(bidTimeIncrementStr, "Bid time increment");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
+            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
+            return;
+        }
+
         // Parse and validate numeric/date inputs
         double startingPrice;
         double minBidIncrement;
-        int countdownTimer;
+        int initialWaitTime;
+        int bidTimeIncrement;
         LocalDateTime auctionStartDateTime;
 
         try {
             startingPrice = ValidationUtils.validatePositiveDouble(startingPriceStr, "Starting price");
             minBidIncrement = ValidationUtils.validateStrictlyPositiveDouble(minBidIncrementStr, "Minimum bid increment");
-            countdownTimer = ValidationUtils.validatePositiveInteger(countdownTimerStr, "Countdown timer");
+            initialWaitTime = ValidationUtils.validatePositiveInteger(initialWaitTimeStr, "Initial wait time");
+            bidTimeIncrement = ValidationUtils.validatePositiveInteger(bidTimeIncrementStr, "Bid time increment");
             auctionStartDateTime = ValidationUtils.validateFutureDateTime(startDateStr, startTimeStr);
         } catch (ValidationException e) {
             request.setAttribute("errorMessage", e.getMessage());
@@ -151,8 +161,10 @@ public class CreateAuctionServlet extends HttpServlet {
             auction.setDescription(description != null ? description : "");
             auction.setStartingPrice(startingPrice);
             auction.setMinBidIncrement(minBidIncrement);
-            auction.setCountdownTimer(countdownTimer);
             auction.setStartDate(auctionStartDateTime);
+            auction.setStatus("not_started");
+            auction.setInitialWaitTime(initialWaitTime);
+            auction.setBidTimeIncrement(bidTimeIncrement);
 
             // Insert auction into database
             auctionService.createAuction(auction);

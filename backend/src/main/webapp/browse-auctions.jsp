@@ -237,8 +237,18 @@
                                     </div>
                                     
                                     <div class="detail-item">
-                                        <div class="detail-label">Bid Countdown</div>
-                                        <div class="detail-value">${auction.countdownTimer} min</div>
+                                        <div class="detail-label">Initial Wait Time</div>
+                                        <div class="detail-value">${auction.initialWaitTime} min</div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Bid Time Increment</div>
+                                        <div class="detail-value">${auction.bidTimeIncrement} min</div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Status</div>
+                                        <div class="detail-value">${auction.status}</div>
                                     </div>
                                     
                                     <div class="detail-item">

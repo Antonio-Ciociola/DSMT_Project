@@ -14,9 +14,14 @@ CREATE TABLE IF NOT EXISTS auctions (
     description TEXT,
     starting_price DECIMAL(10, 2) NOT NULL,
     min_bid_increment DECIMAL(10, 2) NOT NULL,
-    countdown_timer INT NOT NULL,
     start_date DATETIME NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    status ENUM('not_started', 'ongoing', 'finished') NOT NULL DEFAULT 'not_started',
+    winner_user_id INT NULL,
+    final_price DECIMAL(10, 2) NULL,
+    initial_wait_time INT NOT NULL,
+    bid_time_increment INT NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (winner_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- Create sample data

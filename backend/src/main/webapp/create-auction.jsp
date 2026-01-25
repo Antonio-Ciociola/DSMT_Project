@@ -211,8 +211,13 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="countdownTimer">Bid Countdown Timer (minutes):</label>
-                    <input type="number" id="countdownTimer" name="countdownTimer" required min="1" placeholder="10">
+                    <label for="initialWaitTime">Initial Wait Time (minutes):</label>
+                    <input type="number" id="initialWaitTime" name="initialWaitTime" required min="1" placeholder="60">
+                </div>
+                
+                <div class="form-group">
+                    <label for="bidTimeIncrement">Bid Time Increment (minutes):</label>
+                    <input type="number" id="bidTimeIncrement" name="bidTimeIncrement" required min="1" placeholder="5">
                 </div>
                 
                 <div class="form-group">

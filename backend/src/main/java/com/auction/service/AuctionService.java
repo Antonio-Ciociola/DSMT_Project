@@ -16,9 +16,9 @@ public class AuctionService {
         this.auctionDao = new AuctionDao();
     }
 
-    // Fetch all upcoming auctions with owner details
-    public List<Auction> getUpcomingAuctions() throws SQLException {
-        return auctionDao.findUpcomingWithOwner();
+    // Fetch all auctions with owner details
+    public List<Auction> getAllAuctions() throws SQLException {
+        return auctionDao.findAllWithOwner();
     }
 
     // Fetch upcoming auctions for a specific user
