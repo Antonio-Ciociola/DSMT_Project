@@ -1,6 +1,7 @@
 package com.auction.controller;
 
-import com.auction.model.DatabaseConnection;
+import com.auction.model.Auction;
+import com.auction.service.AuctionService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -8,14 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Servlet implementation class DeleteAuctionServlet
@@ -23,6 +18,8 @@ import java.util.Map;
  */
 @WebServlet("/delete-auction")
 public class DeleteAuctionServlet extends HttpServlet {
+
+    private final AuctionService auctionService = new AuctionService();
 
     /**
      * Handles GET requests to show the delete auction page.
@@ -47,49 +44,18 @@ public class DeleteAuctionServlet extends HttpServlet {
             return;
         }
 
-        // List of the user's auctions that haven't started yet
-        List<Map<String, Object>> userAuctions = new ArrayList<>();
-
-        // Fetch user's future auctions from the database
-        try (Connection conn = DatabaseConnection.getConnection()) {
-
-            // Query to get user's auctions that have start_date > NOW()
-            String sql = "SELECT id, title, description, starting_price, min_bid_increment, " +
-                         "countdown_timer, start_date FROM auctions " +
-                         "WHERE user_id = ? AND start_date > NOW() " +
-                         "ORDER BY start_date ASC";
-
-            // Preparing and executing the SQL statement
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setInt(1, userId);
-            ResultSet rs = pstmt.executeQuery();
-
-            // Processing the result set and populating the userAuctions list
-            while (rs.next()) {
-                Map<String, Object> auction = new HashMap<>();
-                auction.put("id", rs.getInt("id"));
-                auction.put("title", rs.getString("title"));
-                auction.put("description", rs.getString("description"));
-                auction.put("starting_price", rs.getDouble("starting_price"));
-                auction.put("min_bid_increment", rs.getDouble("min_bid_increment"));
-                auction.put("countdown_timer", rs.getInt("countdown_timer"));
-                auction.put("start_date", rs.getString("start_date"));
-                userAuctions.add(auction); 
-            }
-
-            // Closing resources
-            rs.close();
-            pstmt.close();
-
+        // Fetch user's upcoming auctions from the service layer
+        try {
+            List<Auction> auctions = auctionService.getUserUpcomingAuctions(userId);
+            request.setAttribute("auctions", auctions);
         } 
-        // Handle SQL exceptions, forward back to delete auction with error
+        // Handle SQL exceptions during auction retrieval
         catch (SQLException e) {
             e.printStackTrace();
             request.setAttribute("errorMessage", "Database error. Please try again later.");
         }
 
-        // Set auctions list as request attribute and forward to JSP
-        request.setAttribute("auctions", userAuctions);
+        // Forward to the JSP page for rendering
         request.getRequestDispatcher("/delete-auction.jsp").forward(request, response);
     }
 
@@ -134,46 +100,21 @@ public class DeleteAuctionServlet extends HttpServlet {
             return;
         }
 
-        // Delete the auction (only if it belongs to the user and hasn't started)
-        try (Connection conn = DatabaseConnection.getConnection()) {
-
-            // Query to get the auction with id of the auction to delete, the id of the 
-            // user who requests the deletion and a start date in the future
-            String verifySQL = "SELECT id FROM auctions WHERE id = ? AND user_id = ? AND start_date > NOW()";
-            PreparedStatement verifyPstmt = conn.prepareStatement(verifySQL);
-            verifyPstmt.setInt(1, auctionId);
-            verifyPstmt.setInt(2, userId);
-            ResultSet rs = verifyPstmt.executeQuery();
-
-            // If no such auction exists then either the auction doesn't exist or it doesn't 
-            // belong to the user or it has already started, forward with error 
-            if (!rs.next()) {
+        // Attempt to delete the auction and handle potential SQL exceptions
+        try {
+            boolean deleted = auctionService.deleteUserUpcomingAuction(auctionId, userId);
+            
+            // If auction not found or already started, forward with error message
+            if (!deleted) {
                 request.setAttribute("errorMessage", "Auction not found or already started.");
-                rs.close();
-                verifyPstmt.close();
                 doGet(request, response);
                 return;
             }
 
-            // Close verification resources
-            rs.close();
-            verifyPstmt.close();
-
-            // Query to delete the auction
-            String deleteSQL = "DELETE FROM auctions WHERE id = ? AND user_id = ?";
-            PreparedStatement deletePstmt = conn.prepareStatement(deleteSQL);
-            deletePstmt.setInt(1, auctionId);
-            deletePstmt.setInt(2, userId);
-
-            // Delete the auction
-            deletePstmt.executeUpdate();
-            deletePstmt.close();
-
-            // Redirect back to delete auction page with success
+            // Redirect to the delete auction page after successful deletion
             response.sendRedirect(request.getContextPath() + "/delete-auction");
-
         } 
-        // Handle SQL exceptions, forward back to delete auction with error
+        // Handle SQL exceptions during auction deletion
         catch (SQLException e) {
             e.printStackTrace();
             request.setAttribute("errorMessage", "Database error. Please try again later.");

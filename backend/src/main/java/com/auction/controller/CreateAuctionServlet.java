@@ -1,6 +1,9 @@
 package com.auction.controller;
 
-import com.auction.model.DatabaseConnection;
+import com.auction.model.Auction;
+import com.auction.service.AuctionService;
+import com.auction.util.ValidationUtils;
+import com.auction.util.ValidationUtils.ValidationException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -8,12 +11,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.time.format.DateTimeParseException;
 
 /**
  * Servlet implementation class CreateAuctionServlet
@@ -21,6 +19,9 @@ import java.time.format.DateTimeParseException;
  */
 @WebServlet("/create-auction")
 public class CreateAuctionServlet extends HttpServlet {
+
+    // Service instance to interact with auction data
+    private final AuctionService auctionService = new AuctionService();
 
     /**
      * Handles GET requests to show the create auction page.
@@ -79,129 +80,88 @@ public class CreateAuctionServlet extends HttpServlet {
         String countdownTimerStr = request.getParameter("countdownTimer");
         String startDateStr = request.getParameter("startDate");
         String startTimeStr = request.getParameter("startTime");
-    
-        // If any field is missing, return to create auction with error message
-        if (title == null || title.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Title is required.");
+
+        // Validate required fields, forward with error if any are missing
+        String error = ValidationUtils.validateRequired(title, "Title");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
-        
-        if (startingPriceStr == null || startingPriceStr.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Starting price is required.");
+
+        error = ValidationUtils.validateRequired(startingPriceStr, "Starting price");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
-        
-        if (minBidIncrementStr == null || minBidIncrementStr.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Minimum bid increment is required.");
+
+        error = ValidationUtils.validateRequired(minBidIncrementStr, "Minimum bid increment");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
-        
-        if (countdownTimerStr == null || countdownTimerStr.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Countdown timer is required.");
+
+        error = ValidationUtils.validateRequired(countdownTimerStr, "Countdown timer");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
-        
-        if (startDateStr == null || startDateStr.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Start date is required.");
+
+        error = ValidationUtils.validateRequired(startDateStr, "Start date");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
-        
-        if (startTimeStr == null || startTimeStr.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Start time is required.");
+
+        error = ValidationUtils.validateRequired(startTimeStr, "Start time");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
-        
-        // Parse and validate inputs
+
+        // Parse and validate numeric/date inputs
         double startingPrice;
         double minBidIncrement;
         int countdownTimer;
-        
-        // Parsing starting price, min bid increment, and countdown timer, forwarding with error if invalid
-        try {
-            startingPrice = Double.parseDouble(startingPriceStr);
-            if (startingPrice < 0) {
-                throw new NumberFormatException("Price cannot be negative");
-            }
-        } catch (NumberFormatException e) {
-            request.setAttribute("errorMessage", "Invalid starting price.");
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-        
-        try {
-            minBidIncrement = Double.parseDouble(minBidIncrementStr);
-            if (minBidIncrement <= 0) {
-                throw new NumberFormatException("Bid increment must be positive");
-            }
-        } catch (NumberFormatException e) {
-            request.setAttribute("errorMessage", "Invalid minimum bid increment.");
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-        
-        try {
-            countdownTimer = Integer.parseInt(countdownTimerStr);
-            if (countdownTimer <= 0) {
-                throw new NumberFormatException("Timer must be positive");
-            }
-        } catch (NumberFormatException e) {
-            request.setAttribute("errorMessage", "Invalid countdown timer (must be positive hours).");
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-        
-        
-        // Validate that the start date is not in the past, forwarding with error if invalid
-        String startDatetime = startDateStr + " " + startTimeStr;
-        try {
-            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-            LocalDateTime auctionStartDateTime = LocalDateTime.parse(startDatetime, formatter);
-            LocalDateTime now = LocalDateTime.now();
-            
-            if (auctionStartDateTime.isBefore(now)) {
-                request.setAttribute("errorMessage", "Start date and time cannot be in the past.");
-                request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-                return;
-            }
-        } catch (DateTimeParseException e) {
-            request.setAttribute("errorMessage", "Invalid date or time format.");
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-        
-        
-        // Insert auction into database using prepared statement
-        try (Connection conn = DatabaseConnection.getConnection()) {
+        LocalDateTime auctionStartDateTime;
 
-            // Create SQL insert statement
-            String sql = "INSERT INTO auctions (user_id, title, description, starting_price, min_bid_increment, countdown_timer, start_date) VALUES (?, ?, ?, ?, ?, ?, ?)";
-            PreparedStatement pstmt = conn.prepareStatement(sql);
+        try {
+            startingPrice = ValidationUtils.validatePositiveDouble(startingPriceStr, "Starting price");
+            minBidIncrement = ValidationUtils.validateStrictlyPositiveDouble(minBidIncrementStr, "Minimum bid increment");
+            countdownTimer = ValidationUtils.validatePositiveInteger(countdownTimerStr, "Countdown timer");
+            auctionStartDateTime = ValidationUtils.validateFutureDateTime(startDateStr, startTimeStr);
+        } catch (ValidationException e) {
+            request.setAttribute("errorMessage", e.getMessage());
+            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
+            return;
+        }
 
-            // Set parameters
-            pstmt.setInt(1, userId);
-            pstmt.setString(2, title);
-            pstmt.setString(3, description != null ? description : "");
-            pstmt.setDouble(4, startingPrice);
-            pstmt.setDouble(5, minBidIncrement);
-            pstmt.setInt(6, countdownTimer);
-            pstmt.setString(7, startDatetime);
-            
-            // Execute insert
-            pstmt.executeUpdate();
-            pstmt.close();
-            
-            // Redirect to home page
+        // Create auction object and persist to database
+        try {
+
+            // Create new auction object
+            Auction auction = new Auction();
+            auction.setUserId(userId);
+            auction.setTitle(title);
+            auction.setDescription(description != null ? description : "");
+            auction.setStartingPrice(startingPrice);
+            auction.setMinBidIncrement(minBidIncrement);
+            auction.setCountdownTimer(countdownTimer);
+            auction.setStartDate(auctionStartDateTime);
+
+            // Insert auction into database
+            auctionService.createAuction(auction);
+
+            // Redirect to home page on successful creation
             response.sendRedirect(request.getContextPath() + "/home");
-            
         } 
-        // Handle SQL exceptions, forward back to create auction with error
-        catch (SQLException e) {
+        // Handle general exceptions during auction creation
+        catch (Exception e) {
             e.printStackTrace();
             request.setAttribute("errorMessage", "Database error. Please try again later.");
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);

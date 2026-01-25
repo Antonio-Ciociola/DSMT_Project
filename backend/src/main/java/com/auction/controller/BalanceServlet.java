@@ -1,6 +1,8 @@
 package com.auction.controller;
 
-import com.auction.model.DatabaseConnection;
+import com.auction.service.UserService;
+import com.auction.util.ValidationUtils;
+import com.auction.util.ValidationUtils.ValidationException;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -10,9 +12,6 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 
 /**
@@ -20,6 +19,9 @@ import java.sql.SQLException;
  */
 @WebServlet("/balance")
 public class BalanceServlet extends HttpServlet {
+
+    // Service instance to interact with user data
+    private final UserService userService = new UserService();
 
     /**
      * Handles GET requests to show the user's balance.
@@ -49,33 +51,13 @@ public class BalanceServlet extends HttpServlet {
             request.setAttribute("successMessage", "Balance updated successfully.");
         }
 
-        // Fetch user's balance from the database
-        try (Connection conn = DatabaseConnection.getConnection()) {
 
-            // Query to get user's balance
-            String sql = "SELECT balance FROM users WHERE id = ?";
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setInt(1, userId);
-            ResultSet rs = pstmt.executeQuery();
-
-            // If user found, set balance attribute
-            if (rs.next()) {
-                BigDecimal balance = rs.getBigDecimal("balance");
-                if (balance == null) {
-                    balance = BigDecimal.ZERO;
-                }
-                request.setAttribute("balance", balance.setScale(2, RoundingMode.HALF_UP));
-            } 
-            // If user not found, set error message
-            else {
-                request.setAttribute("errorMessage", "User not found.");
-            }
-
-            // Close resources
-            rs.close();
-            pstmt.close();
+        // Retrieve user balance from database and set as request attribute
+        try {
+            BigDecimal balance = userService.getBalance(userId);
+            request.setAttribute("balance", balance.setScale(2, RoundingMode.HALF_UP));
         } 
-        // Handle SQL exceptions
+        // Handle SQL exceptions during balance retrieval
         catch (SQLException e) {
             e.printStackTrace();
             request.setAttribute("errorMessage", "Database error. Please try again later.");
@@ -111,47 +93,28 @@ public class BalanceServlet extends HttpServlet {
 
         // Get amount parameter and check if the string is valid
         String amountStr = request.getParameter("amount");
-        if (amountStr == null || amountStr.trim().isEmpty()) {
-            request.setAttribute("errorMessage", "Amount is required.");
+        String error = ValidationUtils.validateRequired(amountStr, "Amount");
+        if (error != null) {
+            request.setAttribute("errorMessage", error);
             doGet(request, response);
             return;
         }
 
-        // Parse amount to BigDecimal and if invalid, forward with error
+        // Parse amount to BigDecimal and validate it, if invalid forward with error
         BigDecimal amount;
         try {
-            amount = new BigDecimal(amountStr.trim());
-        } catch (NumberFormatException e) {
-            request.setAttribute("errorMessage", "Invalid amount format.");
+            amount = ValidationUtils.validateStrictlyPositiveBigDecimal(amountStr, "Amount");
+        } catch (ValidationException e) {
+            request.setAttribute("errorMessage", e.getMessage());
             doGet(request, response);
             return;
         }
 
-        // Check if amount is positive, forward with error if not
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            request.setAttribute("errorMessage", "Amount must be positive.");
-            doGet(request, response);
-            return;
-        }
-
-        // Update user's balance in the database
-        try (Connection conn = DatabaseConnection.getConnection()) {
-
-            // Preparation of SQL statement to update user's balance
-            String sql = "UPDATE users SET balance = balance + ? WHERE id = ?";
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setBigDecimal(1, amount);
-            pstmt.setInt(2, userId);
-
-            // Execute update and close resources
-            pstmt.executeUpdate();
-            pstmt.close();
-
-            // Redirect back to balance page with success message
+        // Update balance in database and handle potential SQL exceptions
+        try {
+            userService.addToBalance(userId, amount);
             response.sendRedirect(request.getContextPath() + "/balance?success=1");
-        } 
-        // Handle SQL exceptions, forward back to balance with error
-        catch (SQLException e) {
+        } catch (SQLException e) {
             e.printStackTrace();
             request.setAttribute("errorMessage", "Database error. Please try again later.");
             doGet(request, response);

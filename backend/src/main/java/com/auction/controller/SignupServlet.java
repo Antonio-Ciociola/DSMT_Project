@@ -1,14 +1,12 @@
 package com.auction.controller;
 
-import com.auction.model.DatabaseConnection;
+import com.auction.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
 
 /**
@@ -17,6 +15,9 @@ import java.sql.SQLException;
  */
 @WebServlet("/signup")
 public class SignupServlet extends HttpServlet {
+
+    // Service instance to handle user registration
+    private final UserService userService = new UserService();
 
     /**
      * Handles GET requests to show the signup page.
@@ -29,6 +30,7 @@ public class SignupServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response) 
             throws ServletException, IOException {
         
+        // Forward to signup.jsp
         request.getRequestDispatcher("/signup.jsp").forward(request, response);
     }
 
@@ -70,27 +72,17 @@ public class SignupServlet extends HttpServlet {
             return;
         }
 
-        // Get database connection and create new user
-        try (Connection conn = DatabaseConnection.getConnection()) {
-
-            // Insert new user into database
-            String sql = "INSERT INTO users (username, password, balance) VALUES (?, ?, ?)";
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setString(1, username);
-            pstmt.setString(2, password);
-            pstmt.setDouble(3, 0.0);  // Initial balance is 0
-            pstmt.executeUpdate();
-            pstmt.close();
-            
-            // Signup successful, redirect to login
+        // Register the user and forward with success message
+        try {
+            userService.register(username, password);
             request.setAttribute("successMessage", "Account created successfully! Please log in.");
             request.getRequestDispatcher("/login.jsp").forward(request, response);
-            
         } 
-        // Handle SQL exceptions (e.g., duplicate username)
+        // Handle SQL exceptions during registration, forward with error message differentiating
+        // between duplicate username and other database errors
         catch (SQLException e) {
             e.printStackTrace();
-            if (e.getMessage().contains("Duplicate entry")) {
+            if (e.getMessage() != null && e.getMessage().contains("Duplicate entry")) {
                 request.setAttribute("errorMessage", "Username already exists.");
             } else {
                 request.setAttribute("errorMessage", "Database error. Please try again later.");

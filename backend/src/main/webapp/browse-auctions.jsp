@@ -1,11 +1,5 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="java.util.List" %>
-<%@ page import="java.util.Map" %>
-<%
-    @SuppressWarnings("unchecked")
-    List<Map<String, Object>> auctions = (List<Map<String, Object>>) request.getAttribute("auctions");
-    String errorMessage = (String) request.getAttribute("errorMessage");
-%>
+<%@ taglib uri="http://java.sun.com/jsp/jstl/core" prefix="c" %>
 <!DOCTYPE html>
 <html>
 <head>
@@ -207,59 +201,61 @@
     </header>
     
     <div class="container">
-        <% if (errorMessage != null) { %>
-            <div class="error-message"><%= errorMessage %></div>
-        <% } %>
+        <c:if test="${not empty errorMessage}">
+            <div class="error-message">${errorMessage}</div>
+        </c:if>
         
-        <% if (auctions != null && !auctions.isEmpty()) { %>
-            <div class="auctions-grid">
-                <% for (Map<String, Object> auction : auctions) { %>
-                    <div class="auction-card">
-                        <div class="auction-header">
-                            <div class="auction-title"><%= auction.get("title") %></div>
-                            <div class="auction-seller">Seller: <strong><%= auction.get("username") %></strong></div>
-                        </div>
-                        
-                        <div class="auction-body">
-                            <% if (auction.get("description") != null && !auction.get("description").toString().isEmpty()) { %>
-                                <div class="auction-description"><%= auction.get("description") %></div>
-                            <% } %>
+        <c:choose>
+            <c:when test="${empty auctions}">
+                <div class="no-auctions">
+                    <p>No auctions available at the moment.</p>
+                </div>
+            </c:when>
+            <c:otherwise>
+                <div class="auctions-grid">
+                    <c:forEach var="auction" items="${auctions}">
+                        <div class="auction-card">
+                            <div class="auction-header">
+                                <div class="auction-title">${auction.title}</div>
+                                <div class="auction-seller">Seller: <strong>${auction.ownerUsername}</strong></div>
+                            </div>
                             
-                            <div class="auction-details">
-                                <div class="detail-item">
-                                    <div class="detail-label">Starting Price</div>
-                                    <div class="detail-value price">$<%= String.format("%.2f", auction.get("startingPrice")) %></div>
-                                </div>
+                            <div class="auction-body">
+                                <c:if test="${not empty auction.description}">
+                                    <div class="auction-description">${auction.description}</div>
+                                </c:if>
                                 
-                                <div class="detail-item">
-                                    <div class="detail-label">Min Bid Inc.</div>
-                                    <div class="detail-value">$<%= String.format("%.2f", auction.get("minBidIncrement")) %></div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Bid Countdown</div>
-                                    <div class="detail-value"><%= auction.get("countdownTimer") %> min</div>
-                                </div>
-                                
-                                <div class="detail-item">
-                                    <div class="detail-label">Starts</div>
-                                    <div class="detail-value"><%= auction.get("startDate") %></div>
+                                <div class="auction-details">
+                                    <div class="detail-item">
+                                        <div class="detail-label">Starting Price</div>
+                                        <div class="detail-value price">$${String.format("%.2f", auction.startingPrice)}</div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Min Bid Inc.</div>
+                                        <div class="detail-value">$${String.format("%.2f", auction.minBidIncrement)}</div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Bid Countdown</div>
+                                        <div class="detail-value">${auction.countdownTimer} min</div>
+                                    </div>
+                                    
+                                    <div class="detail-item">
+                                        <div class="detail-label">Starts</div>
+                                        <div class="detail-value">${auction.startDate}</div>
+                                    </div>
                                 </div>
                             </div>
+                            
+                            <div class="auction-footer">
+                                <button class="bid-btn">Join</button>
+                            </div>
                         </div>
-                        
-                        <div class="auction-footer">
-                            <button class="bid-btn">Join</button>
-                        </div>
-                    </div>
-                <% } %>
-            </div>
-        <% } else { %>
-            <div class="no-auctions">
-                <h2>No Auctions Available</h2>
-                <p>There are currently no auctions. Check back later!</p>
-            </div>
-        <% } %>
+                    </c:forEach>
+                </div>
+            </c:otherwise>
+        </c:choose>
     </div>
 </body>
 </html>

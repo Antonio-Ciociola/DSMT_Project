@@ -211,19 +211,19 @@
                             <div class="auction-details">
                                 <div class="detail-item">
                                     <span class="detail-label">Starting Price</span>
-                                    <span class="detail-value">$${auction.starting_price}</span>
+                                    <span class="detail-value">$${auction.startingPrice}</span>
                                 </div>
                                 <div class="detail-item">
                                     <span class="detail-label">Min Bid Increment</span>
-                                    <span class="detail-value">$${auction.min_bid_increment}</span>
+                                    <span class="detail-value">$${auction.minBidIncrement}</span>
                                 </div>
                                 <div class="detail-item">
                                     <span class="detail-label">Bid Countdown Timer</span>
-                                    <span class="detail-value">${auction.countdown_timer} min</span>
+                                    <span class="detail-value">${auction.countdownTimer} min</span>
                                 </div>
                                 <div class="detail-item">
                                     <span class="detail-label">Start Date & Time</span>
-                                    <span class="detail-value">${auction.start_date}</span>
+                                    <span class="detail-value">${auction.startDate}</span>
                                 </div>
                             </div>
 

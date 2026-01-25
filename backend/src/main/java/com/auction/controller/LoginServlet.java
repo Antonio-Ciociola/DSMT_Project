@@ -1,6 +1,7 @@
 package com.auction.controller;
 
-import com.auction.model.DatabaseConnection;
+import com.auction.model.User;
+import com.auction.service.UserService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -8,13 +9,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Optional;
 
 @WebServlet("/login")
 public class LoginServlet extends HttpServlet {
+
+    // Service instance to handle user authentication
+    private final UserService userService = new UserService();
 
     /** 
      * Handles GET requests to show the login page.
@@ -46,49 +48,28 @@ public class LoginServlet extends HttpServlet {
         String username = request.getParameter("username");
         String password = request.getParameter("password");
 
-        // Get database connection and authenticate user
-        try (Connection conn = DatabaseConnection.getConnection()) {
+        // Authenticate user
+        try {
 
-            // Query the database for the user
-            String sql = "SELECT id, password FROM users WHERE username = ?";
-            PreparedStatement pstmt = conn.prepareStatement(sql);
-            pstmt.setString(1, username);
-            ResultSet rs = pstmt.executeQuery();
-            
-            // Reading user from the result set
-            if (rs.next()) {
+            // Use UserService to authenticate
+            Optional<User> userOpt = userService.authenticate(username, password);
 
-                // Extracting password and user ID
-                String storedPassword = rs.getString("password");
-                int userId = rs.getInt("id");
-                
-                // If password matches, create session and redirect to home
-                if (password.equals(storedPassword)) {
-                    HttpSession session = request.getSession(true);
-                    session.setAttribute("username", username);
-                    session.setAttribute("userId", userId);
-                    session.setAttribute("loginTime", System.currentTimeMillis());
-                    
-                    response.sendRedirect(request.getContextPath() + "/home");
-                } 
-                // If password does not match, forward back to login with error
-                else {
-                    request.setAttribute("errorMessage", "Invalid username or password.");
-                    request.getRequestDispatcher("/login.jsp").forward(request, response);
-                }
-            } 
-            // User not found, forward back to login with error
-            else {
-                request.setAttribute("errorMessage", "Invalid username or password.");
-                request.getRequestDispatcher("/login.jsp").forward(request, response);
+            // If authentication is successful, create session and redirect to home
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                HttpSession session = request.getSession(true);
+                session.setAttribute("username", user.getUsername());
+                session.setAttribute("userId", user.getId());
+                session.setAttribute("loginTime", System.currentTimeMillis());
+                response.sendRedirect(request.getContextPath() + "/home");
+                return;
             }
-            
-            // Clean up
-            rs.close();
-            pstmt.close();
-            
+
+            // If authentication fails, forward back to login with error message
+            request.setAttribute("errorMessage", "Invalid username or password.");
+            request.getRequestDispatcher("/login.jsp").forward(request, response);
         } 
-        // Handle SQL exceptions, forward back to login with error
+        // Handle SQL exceptions during authentication
         catch (SQLException e) {
             e.printStackTrace();
             request.setAttribute("errorMessage", "Database error. Please try again later.");
