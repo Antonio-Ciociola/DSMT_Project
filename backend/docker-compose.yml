@@ -62,6 +62,7 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/auction_system
       DB_USER: auction_user
       DB_PASSWORD: auction_password
+      JWT_SECRET: mi-hanno-detto-che-ad-antonio-ciociola-puzzano-i-piedi # Secret key for JWT signing (should be more secure in production)
 
     ### Service dependencies
     # Ensures that the backend service starts only after the MySQL service is healthy (i.e. 

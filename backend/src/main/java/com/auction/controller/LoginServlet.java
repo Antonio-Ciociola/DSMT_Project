@@ -2,6 +2,7 @@ package com.auction.controller;
 
 import com.auction.model.User;
 import com.auction.service.UserService;
+import com.auction.util.JwtUtil;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
@@ -54,14 +55,24 @@ public class LoginServlet extends HttpServlet {
             // Use UserService to authenticate
             Optional<User> userOpt = userService.authenticate(username, password);
 
-            // If authentication is successful, create session and redirect to home
+            // If authentication is successful, create session and JWT token
             if (userOpt.isPresent()) {
                 User user = userOpt.get();
+                
+                // Create HTTP session
                 HttpSession session = request.getSession(true);
                 session.setAttribute("username", user.getUsername());
                 session.setAttribute("userId", user.getId());
                 session.setAttribute("loginTime", System.currentTimeMillis());
-                response.sendRedirect(request.getContextPath() + "/home");
+                
+                // Generate JWT token for Erlang and API calls
+                String jwtToken = JwtUtil.generateToken(user.getId(), user.getUsername());
+                session.setAttribute("jwtToken", jwtToken);
+                
+                // Make JWT available to JSP so client can store it
+                request.setAttribute("jwtToken", jwtToken);
+                request.setAttribute("username", user.getUsername());
+                request.getRequestDispatcher("/login-success.jsp").forward(request, response);
                 return;
             }
 
