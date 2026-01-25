@@ -2,3 +2,4 @@
 target/
 *.war
 todo.txt
+scripts/*

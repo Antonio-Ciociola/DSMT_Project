@@ -4,12 +4,14 @@ import com.auction.model.Auction;
 import com.auction.service.AuctionService;
 import com.auction.util.ValidationUtils;
 import com.auction.util.ValidationUtils.ValidationException;
+import com.auction.util.QuartzScheduler;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import org.quartz.SchedulerException;
 import java.io.IOException;
 import java.time.LocalDateTime;
 
@@ -167,7 +169,15 @@ public class CreateAuctionServlet extends HttpServlet {
             auction.setBidTimeIncrement(bidTimeIncrement);
 
             // Insert auction into database
-            auctionService.createAuction(auction);
+            int auctionId = auctionService.createAuction(auction);
+
+            // Schedule the auction to start at the specified date/time
+            try {
+                QuartzScheduler.scheduleAuctionStart(auctionId, auctionStartDateTime);
+            } catch (SchedulerException e) {
+                System.err.println("Warning: Failed to schedule auction start: " + e.getMessage());
+                // Don't fail the auction creation, just log the warning
+            }
 
             // Redirect to home page on successful creation
             response.sendRedirect(request.getContextPath() + "/home");

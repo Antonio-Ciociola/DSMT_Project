@@ -118,6 +118,56 @@ public class UserDao {
         }
     }
 
+    // Transfer balance from one user to another (winner pays, seller receives)
+    public void transferBalance(int fromUserId, int toUserId, BigDecimal amount) throws SQLException {
+        // Two separate updates wrapped in a transaction to avoid multi-statement issues
+        String debitSql = "UPDATE users SET balance = balance - ? WHERE id = ?";
+        String creditSql = "UPDATE users SET balance = balance + ? WHERE id = ?";
+
+        try (
+            Connection conn = DatabaseConnection.getConnection()
+        ) {
+
+            // Start transaction
+            boolean originalAutoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+
+            // Prepare and execute debit and credit statements
+            try (
+                PreparedStatement debitStmt = conn.prepareStatement(debitSql);
+                PreparedStatement creditStmt = conn.prepareStatement(creditSql)
+            ) {
+                // Debit payer
+                debitStmt.setBigDecimal(1, amount);
+                debitStmt.setInt(2, fromUserId);
+                int debitUpdated = debitStmt.executeUpdate();
+                if (debitUpdated == 0) {
+                    throw new SQLException("User not found for id " + fromUserId);
+                }
+
+                // Credit seller
+                creditStmt.setBigDecimal(1, amount);
+                creditStmt.setInt(2, toUserId);
+                int creditUpdated = creditStmt.executeUpdate();
+                if (creditUpdated == 0) {
+                    throw new SQLException("User not found for id " + toUserId);
+                }
+
+                // Commit transaction
+                conn.commit();
+            } 
+            // Rollback transaction on error
+            catch (SQLException ex) {
+                conn.rollback();
+                throw ex;
+            } 
+            // Restore original auto-commit setting
+            finally {
+                conn.setAutoCommit(originalAutoCommit);
+            }
+        }
+    }
+
     // Helper method to map a ResultSet row to a User object
     private User mapUser(ResultSet rs) throws SQLException {
         User user = new User();

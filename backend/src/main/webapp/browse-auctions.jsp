@@ -255,6 +255,18 @@
                                         <div class="detail-label">Starts</div>
                                         <div class="detail-value">${auction.startDate}</div>
                                     </div>
+                                    
+                                    <c:if test="${auction.status == 'finished'}">
+                                        <div class="detail-item">
+                                            <div class="detail-label">Winner</div>
+                                            <div class="detail-value"><strong>${auction.winnerUsername}</strong></div>
+                                        </div>
+                                        
+                                        <div class="detail-item">
+                                            <div class="detail-label">Final Price</div>
+                                            <div class="detail-value price">$${String.format("%.2f", auction.finalPrice)}</div>
+                                        </div>
+                                    </c:if>
                                 </div>
                             </div>
                             

@@ -76,7 +76,7 @@ public class AuctionDao {
     }
 
     // Create a new auction in the database
-    public void createAuction(Auction auction) throws SQLException {
+    public int createAuction(Auction auction) throws SQLException {
 
         // SQL insert statement to add a new auction
         String sql = "INSERT INTO auctions (user_id, title, description, starting_price, min_bid_increment, " +
@@ -86,7 +86,7 @@ public class AuctionDao {
         // Getting DB connection, preparing the statement with auction details
         try (
             Connection conn = DatabaseConnection.getConnection();
-            PreparedStatement pstmt = conn.prepareStatement(sql)
+            PreparedStatement pstmt = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS)
         ) {
             pstmt.setInt(1, auction.getUserId());
             pstmt.setString(2, auction.getTitle());
@@ -98,6 +98,15 @@ public class AuctionDao {
             pstmt.setInt(8, auction.getInitialWaitTime());
             pstmt.setInt(9, auction.getBidTimeIncrement());
             pstmt.executeUpdate();
+            
+            // Get the generated auction ID
+            try (ResultSet rs = pstmt.getGeneratedKeys()) {
+                if (rs.next()) {
+                    return rs.getInt(1);
+                } else {
+                    throw new SQLException("Failed to retrieve generated auction ID");
+                }
+            }
         }
     }
 
@@ -159,6 +168,24 @@ public class AuctionDao {
         }
     }
 
+    // Finish an auction by setting status, winner, and final price
+    public void finishAuction(int auctionId, int winnerUserId, double finalPrice) throws SQLException {
+        
+        // SQL update statement to finalize the auction
+        String sql = "UPDATE auctions SET status = ?, winner_user_id = ?, final_price = ? WHERE id = ?";
+        
+        try (
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)
+        ) {
+            pstmt.setString(1, "finished");
+            pstmt.setInt(2, winnerUserId);
+            pstmt.setDouble(3, finalPrice);
+            pstmt.setInt(4, auctionId);
+            pstmt.executeUpdate();
+        }
+    }
+
     // Helper method to map a ResultSet row to an Auction object
     private Auction mapAuction(ResultSet rs, boolean includeOwner) throws SQLException {
         Auction auction = new Auction();
@@ -189,5 +216,23 @@ public class AuctionDao {
             auction.setWinnerUsername(rs.getString("winner_username"));
         }
         return auction;
+    }
+
+    // Update auction status
+    public void updateAuctionStatus(int auctionId, String status) throws SQLException {
+        String sql = "UPDATE auctions SET status = ? WHERE id = ?";
+        
+        try (
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)
+        ) {
+            pstmt.setString(1, status);
+            pstmt.setInt(2, auctionId);
+            
+            int rowsUpdated = pstmt.executeUpdate();
+            if (rowsUpdated == 0) {
+                throw new SQLException("Auction not found with id: " + auctionId);
+            }
+        }
     }
 }
