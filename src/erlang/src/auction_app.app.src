@@ -1,0 +1,20 @@
+{application, auction_app, [
+    {description, "Distributed Auction System"},
+    {vsn, "1.0.0"},
+    {registered, [server]},
+    {mod, {auction_app, []}},
+    {applications, [
+        kernel,
+        stdlib,
+        mnesia,
+        cowboy,
+        jsx,
+        jose
+    ]},
+    {env, [
+        {http_port, 8080}
+    ]},
+    {modules, []},
+    {licenses, ["Apache 2.0"]},
+    {links, []}
+]}.
