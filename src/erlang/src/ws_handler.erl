@@ -79,19 +79,13 @@ websocket_handle(_Frame, State) ->
     {ok, State}.
 
 %% @doc Handle Erlang messages sent to this process
-websocket_info({auction_update, AuctionId, Data}, State) ->
-    %% Forward auction updates to subscribed clients
-    case lists:member(AuctionId, State#state.subscriptions) of
-        true ->
-            Msg = jsx:encode(#{
-                type => <<"auction_update">>,
-                auction_id => AuctionId,
-                data => Data
-            }),
-            {reply, {text, Msg}, State};
-        false ->
-            {ok, State}
-    end;
+websocket_info({auction_update, StateInfo}, State) ->
+    %% Forward auction updates to connected clients
+    Msg = jsx:encode(#{
+        type => <<"auction_update">>,
+        auction_state => StateInfo
+    }),
+    {reply, {text, Msg}, State};
 websocket_info({notification, Data}, State) ->
     %% Send notifications to client
     Msg = jsx:encode(#{
@@ -99,7 +93,8 @@ websocket_info({notification, Data}, State) ->
         data => Data
     }),
     {reply, {text, Msg}, State};
-websocket_info(_Info, State) ->
+websocket_info(Info, State) ->
+    io:format("[WS] Received unknown info: ~p~n", [Info]),
     {ok, State}.
 
 %% @doc Called when WebSocket connection closes
@@ -127,88 +122,6 @@ handle_message(#{<<"type">> := <<"get_balance">>}, State) ->
                     {reply, {text, Response}, State};
                 {error, Reason} ->
                     error_response(format_error(Reason), State)
-            end
-    end;
-
-%% Add balance to user account
-handle_message(#{<<"type">> := <<"add_balance">>,
-                 <<"amount">> := Amount}, State) ->
-    case State#state.user_id of
-        undefined ->
-            error_response(<<"Not authenticated">>, State);
-        UserId ->
-            case server:add_balance(binary_to_list(UserId), Amount) of
-                {ok, NewBalance} ->
-                    Response = jsx:encode(#{
-                        type => <<"add_balance_response">>,
-                        success => true,
-                        new_balance => NewBalance
-                    }),
-                    {reply, {text, Response}, State};
-                {error, Reason} ->
-                    Response = jsx:encode(#{
-                        type => <<"add_balance_response">>,
-                        success => false,
-                        error => format_error(Reason)
-                    }),
-                    {reply, {text, Response}, State}
-            end
-    end;
-
-%% Withdraw balance from user account
-handle_message(#{<<"type">> := <<"withdraw_balance">>,
-                 <<"amount">> := Amount}, State) ->
-    case State#state.user_id of
-        undefined ->
-            error_response(<<"Not authenticated">>, State);
-        UserId ->
-            case server:withdraw_balance(binary_to_list(UserId), Amount) of
-                {ok, NewBalance} ->
-                    Response = jsx:encode(#{
-                        type => <<"withdraw_balance_response">>,
-                        success => true,
-                        new_balance => NewBalance
-                    }),
-                    {reply, {text, Response}, State};
-                {error, Reason} ->
-                    Response = jsx:encode(#{
-                        type => <<"withdraw_balance_response">>,
-                        success => false,
-                        error => format_error(Reason)
-                    }),
-                    {reply, {text, Response}, State}
-            end
-    end;
-
-%% Create auction
-handle_message(#{<<"type">> := <<"create_auction">>,
-                 <<"item_name">> := ItemName,
-                 <<"start_price">> := StartPrice,
-                 <<"duration">> := Duration,
-                 <<"starting_date">> := StartingDate}, State) ->
-    case State#state.user_id of
-        undefined ->
-            error_response(<<"Not authenticated">>, State);
-        UserId ->
-            %% BidIncrement = 1 (default increment), StartingDate from client
-            case server:create_auction(binary_to_list(UserId), 
-                                      binary_to_list(ItemName),
-                                      StartPrice, 1, 
-                                      Duration, StartingDate) of
-                {ok, AuctionId} ->
-                    Response = jsx:encode(#{
-                        type => <<"create_auction_response">>,
-                        success => true,
-                        auction_id => list_to_binary(AuctionId)
-                    }),
-                    {reply, {text, Response}, State};
-                {error, Reason} ->
-                    Response = jsx:encode(#{
-                        type => <<"create_auction_response">>,
-                        success => false,
-                        error => format_error(Reason)
-                    }),
-                    {reply, {text, Response}, State}
             end
     end;
 
@@ -280,19 +193,6 @@ handle_message(#{<<"type">> := <<"place_bid">>,
             end
     end;
 
-%% Get waiting auctions
-handle_message(#{<<"type">> := <<"get_waiting_auctions">>}, State) ->
-    case server:get_waiting_auctions() of
-        {ok, Auctions} ->
-            Response = jsx:encode(#{
-                type => <<"waiting_auctions_response">>,
-                auctions => format_auctions(Auctions)
-            }),
-            {reply, {text, Response}, State};
-        {error, Reason} ->
-            error_response(format_error(Reason), State)
-    end;
-
 %% Get active auctions
 handle_message(#{<<"type">> := <<"get_active_auctions">>}, State) ->
     case server:get_active_auctions() of
@@ -348,7 +248,7 @@ format_auctions(Auctions) ->
     [format_auction(A) || A <- Auctions].
 
 format_auction({auction, AuctionId, Creator, ItemName, MinBid, 
-                Duration, StartTime, Winner, WinningBid, _NodePid, Waitlist}) ->
+                Duration, StartTime, Winner, WinningBid, _NodePid}) ->
     #{
         auction_id => list_to_binary(AuctionId),
         creator => list_to_binary(Creator),
@@ -357,8 +257,7 @@ format_auction({auction, AuctionId, Creator, ItemName, MinBid,
         duration => Duration,
         start_time => StartTime,
         winner => format_winner(Winner),
-        winning_bid => WinningBid,
-        waitlist_count => length(Waitlist)
+        winning_bid => WinningBid
     };
 format_auction(_) ->
     #{}.
@@ -434,22 +333,15 @@ verify_real_jwt(Token) ->
             {error, jwt_verification_failed}
     end.
 
-%% @doc Ensure user exists in database, create if not
+%% @doc Ensure user exists in database
 ensure_user_exists(UserId) ->
     case mnesia_db:get_user(UserId) of
         {ok, _User} ->
             io:format("[WS] User ~p exists~n", [UserId]),
             ok;
         {error, not_found} ->
-            io:format("[WS] Creating new user ~p with 0 balance~n", [UserId]),
-            case mnesia_db:add_user(UserId, "", 0) of
-                {ok, _Username} ->
-                    io:format("[WS] User ~p created successfully~n", [UserId]),
-                    ok;
-                {error, Reason} ->
-                    io:format("[WS] Failed to create user ~p: ~p~n", [UserId, Reason]),
-                    {error, Reason}
-            end;
+            io:format("[WS] User ~p not found - must be registered via POST /api/user first~n", [UserId]),
+            {error, user_not_registered};
         {error, Reason} ->
             io:format("[WS] Error checking user ~p: ~p~n", [UserId, Reason]),
             {error, Reason}

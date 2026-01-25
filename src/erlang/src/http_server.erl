@@ -28,6 +28,10 @@ start(Port) ->
             %% WebSocket endpoint
             {"/ws", ws_handler, []},
             
+            %% POST endpoints for external system
+            {"/api/auction", auction_post_handler, []},
+            {"/api/user", user_post_handler, []},
+            
             %% Static health check
             {"/health", health_handler, []},
             

@@ -21,14 +21,13 @@
     authenticate_user/2,
     get_balance/1,
     deposit_funds/2,
-    add_balance/2,
-    withdraw_balance/2,
+    
+    %% External POST endpoints
+    register_auction/3,
+    register_auction_user/3,
     
     %% Auction management
-    create_auction/6,
     cancel_auction/1,
-    join_waitlist/2,
-    get_waiting_auctions/0,
     get_active_auctions/0,
     get_completed_auctions/0,
     
@@ -87,29 +86,17 @@ get_balance(Username) ->
 deposit_funds(Username, Amount) ->
     gen_server:call(?MODULE, {deposit, Username, Amount}).
 
-%% @doc Add balance to user account
-add_balance(Username, Amount) ->
-    gen_server:call(?MODULE, {add_balance, Username, Amount}).
+%% @doc Register an auction from external POST endpoint
+register_auction(AuctionId, StartingPrice, MinDuration) ->
+    gen_server:call(?MODULE, {register_auction, AuctionId, StartingPrice, MinDuration}).
 
-%% @doc Withdraw balance from user account
-withdraw_balance(Username, Amount) ->
-    gen_server:call(?MODULE, {withdraw_balance, Username, Amount}).
-
-%% @doc Create a new auction
-create_auction(Creator, ItemName, MinBid, BidIncrement, Duration, StartTime) ->
-    gen_server:call(?MODULE, {create_auction, Creator, ItemName, MinBid, BidIncrement, Duration, StartTime}).
+%% @doc Register a user as active for an auction from external POST endpoint
+register_auction_user(AuctionId, UserId, Balance) ->
+    gen_server:call(?MODULE, {register_auction_user, AuctionId, UserId, Balance}).
 
 %% @doc Cancel an auction (must be in waiting state)
 cancel_auction(AuctionId) ->
     gen_server:call(?MODULE, {cancel_auction, AuctionId}).
-
-%% @doc Join auction waitlist
-join_waitlist(AuctionId, Username) ->
-    gen_server:call(?MODULE, {join_waitlist, AuctionId, Username}).
-
-%% @doc Get all waiting auctions
-get_waiting_auctions() ->
-    gen_server:call(?MODULE, get_waiting_auctions).
 
 %% @doc Get all active auctions
 get_active_auctions() ->
@@ -244,10 +231,7 @@ handle_call({cancel_auction, AuctionId}, _From, State) ->
             {reply, Result, State}
     end;
 
-handle_call({join_waitlist, AuctionId, Username}, _From, State) ->
-    io:format("[SERVER] User ~p joining waitlist for ~p~n", [Username, AuctionId]),
-    Result = mnesia_db:add_user_to_waitlist(AuctionId, Username),
-    {reply, Result, State};
+
 
 handle_call(get_waiting_auctions, _From, State) ->
     Result = mnesia_db:get_waiting_auctions(),
@@ -260,6 +244,58 @@ handle_call(get_active_auctions, _From, State) ->
 handle_call(get_completed_auctions, _From, State) ->
     Result = mnesia_db:get_completed_auctions(),
     {reply, Result, State};
+
+%%%===================================================================
+%%% POST endpoint handlers
+%%%===================================================================
+
+handle_call({register_auction, AuctionId, StartingPrice, MinDuration}, _From, State) ->
+    io:format("[SERVER] Registering auction via POST: ~p~n", [AuctionId]),
+    
+    %% Create auction in database with system as creator
+    case mnesia_db:add_auction(AuctionId, "system", AuctionId, StartingPrice, 0, MinDuration, 0) of
+        {ok, _} ->
+            %% Start auction handler process
+            case auction_handler:start_link(AuctionId) of
+                {ok, Pid} ->
+                    NewHandlers = [{AuctionId, Pid} | State#state.auction_handlers],
+                    io:format("[SERVER] Auction handler started: ~p -> ~p~n", [AuctionId, Pid]),
+                    {reply, ok, State#state{auction_handlers = NewHandlers}};
+                Error ->
+                    io:format("[SERVER] Failed to start auction handler: ~p~n", [Error]),
+                    {reply, {error, handler_failed}, State}
+            end;
+        Error ->
+            {reply, Error, State}
+    end;
+
+handle_call({register_auction_user, AuctionId, UserId, Balance}, _From, State) ->
+    io:format("[SERVER] Registering user ~p for auction ~p with balance ~p~n", 
+              [UserId, AuctionId, Balance]),
+    
+    %% Ensure user exists in database
+    case mnesia_db:get_user(UserId) of
+        {error, not_found} ->
+            %% Create user with specified balance
+            case mnesia_db:add_user(UserId, "no_password", Balance) of
+                {ok, _} ->
+                    io:format("[SERVER] Created user ~p with balance ~p~n", [UserId, Balance]),
+                    {reply, ok, State};
+                Error ->
+                    {reply, Error, State}
+            end;
+        {ok, _User} ->
+            %% User exists, update balance
+            io:format("[SERVER] User ~p already exists, updating balance to ~p~n", [UserId, Balance]),
+            case mnesia_db:update_user_balance(UserId, Balance) of
+                ok ->
+                    {reply, ok, State};
+                Error ->
+                    {reply, Error, State}
+            end;
+        Error ->
+            {reply, Error, State}
+    end;
 
 %%%===================================================================
 %%% Auction interaction handlers
@@ -283,9 +319,9 @@ handle_call({connect_auction, AuctionId, Username, Role}, {ClientPid, _Tag}, Sta
         {AuctionId, Pid} ->
             Result = case Role of
                 participant ->
-                    auction_handler:join_as_participant(Pid, Username);
+                    auction_handler:join_as_participant(Pid, Username, ClientPid);
                 spectator ->
-                    auction_handler:join_as_spectator(Pid, Username)
+                    auction_handler:join_as_spectator(Pid, Username, ClientPid)
             end,
             
             %% Track connected user

@@ -157,7 +157,7 @@ join_cluster(RemoteNode) ->
 
 %% @doc Start Cowboy dependencies
 start_cowboy_deps() ->
-    Apps = [crypto, asn1, public_key, ssl, jsx, cowlib, ranch, cowboy],
+    Apps = [crypto, asn1, public_key, ssl, jsx, jose, cowlib, ranch, cowboy],
     lists:foreach(fun(App) ->
         case application:start(App) of
             ok -> 

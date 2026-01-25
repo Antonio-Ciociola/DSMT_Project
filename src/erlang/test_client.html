@@ -7,14 +7,14 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 1200px;
+            max-width: 1600px;
             margin: 20px auto;
             padding: 20px;
             background: #f5f5f5;
         }
         .container {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr;
             gap: 20px;
         }
         .panel {
@@ -61,13 +61,12 @@
         }
         button {
             width: 100%;
-        }
-        button {
             background: #007bff;
             color: white;
             border: none;
             cursor: pointer;
             border-radius: 4px;
+            font-size: 14px;
         }
         button:hover {
             background: #0056b3;
@@ -76,7 +75,7 @@
             background: #ccc;
             cursor: not-allowed;
         }
-        #messages {
+        #messages, #rawMessages {
             height: 400px;
             overflow-y: auto;
             background: #f9f9f9;
@@ -125,40 +124,42 @@
             <h2>User Info</h2>
             <button onclick="getBalance()">Get Balance</button>
             
-            <h2>Balance Operations</h2>
+            <h2>POST Endpoints (External System)</h2>
             <div class="form-group">
-                <label>Amount:</label>
-                <input type="number" id="balanceAmount" value="100">
-            </div>
-            <button onclick="addBalance()">Add Balance</button>
-            <button onclick="withdrawBalance()">Withdraw Balance</button>
-            
-            <h2>Auction Operations</h2>
-            <div class="form-group">
-                <label>Item Name:</label>
-                <input type="text" id="itemName" value="Cool Item">
+                <label>Auction ID:</label>
+                <input type="text" id="postAuctionId" value="auction_001">
             </div>
             <div class="form-group">
-                <label>Start Price:</label>
-                <input type="number" id="startPrice" value="100">
+                <label>Starting Price:</label>
+                <input type="number" id="postStartPrice" value="100">
             </div>
             <div class="form-group">
-                <label>Duration (seconds):</label>
-                <input type="number" id="duration" value="600">
+                <label>Min Duration (sec):</label>
+                <input type="number" id="postMinDuration" value="300">
             </div>
-            <div class="form-group">
-                <label>Starting Date:</label>
-                <input type="datetime-local" id="startingDate">
-            </div>
-            <button onclick="createAuction()">Create Auction</button>
+            <button onclick="postAuction()">POST Auction</button>
             
             <br>
+            <div class="form-group">
+                <label>User ID:</label>
+                <input type="text" id="postUserId" value="user123">
+            </div>
+            <div class="form-group">
+                <label>User Balance:</label>
+                <input type="number" id="postUserBalance" value="1000">
+            </div>
+            <div class="form-group">
+                <label>For Auction ID:</label>
+                <input type="text" id="postUserAuctionId" value="auction_001">
+            </div>
+            <button onclick="postUser()">POST User</button>
+            
+            <h2>Auction Operations</h2>
             <div class="form-group">
                 <label>Auction ID:</label>
                 <input type="text" id="auctionId">
             </div>
             <button onclick="connectAuction()">Connect as Participant</button>
-            <button onclick="getWaitingAuctions()">Get Waiting Auctions</button>
             <button onclick="getActiveAuctions()">Get Active Auctions</button>
             
             <br>
@@ -174,10 +175,17 @@
             <button onclick="clearMessages()">Clear Messages</button>
             <div id="messages"></div>
         </div>
+        
+        <div class="panel">
+            <h2>Raw JSON</h2>
+            <button onclick="clearRawMessages()">Clear Raw JSON</button>
+            <div id="rawMessages"></div>
+        </div>
     </div>
 
     <script>
         let ws = null;
+        let lastBidAmount = {}; // Track last bid per auction to avoid spam
         
         function connect() {
             const url = document.getElementById('wsUrl').value;
@@ -203,7 +211,32 @@
             
             ws.onmessage = (event) => {
                 const msg = JSON.parse(event.data);
-                addMessage('📨 Received: ' + JSON.stringify(msg, null, 2), 'success');
+                
+                addMessage(`Received message`, 'info');
+
+                // Always show raw JSON
+                addRawMessage('📥 ' + JSON.stringify(msg, null, 2), 'info');
+                
+                // Handle auction updates specially - show full information
+                if (msg.type === 'auction_update') {
+                    const state = msg.auction_state;
+                    
+                    // Format highest bid
+                    let highestBidStr = 'No bids yet';
+                    if (state.highest_bid && state.highest_bid !== 'none') {
+                        highestBidStr = `${state.highest_bid.username}: $${state.highest_bid.amount}`;
+                    }
+                    
+                    // Only show full update when bid changes
+                    const bidKey = state.auction_id + '_' + JSON.stringify(state.highest_bid);
+                    if (lastBidAmount[state.auction_id] !== bidKey) {
+                        lastBidAmount[state.auction_id] = bidKey;
+                        
+                        addMessage(`🔔 Auction Update: ${state.auction_id}\n` +
+                            `  Remaining: ${state.remaining_time}s\n` +
+                            `  Highest Bid: ${highestBidStr}`, 'success');
+                    }
+                }
             };
             
             ws.onerror = (error) => {
@@ -231,7 +264,9 @@
                 addMessage('❌ Not connected!', 'error');
                 return;
             }
-            addMessage('📤 Sending: ' + JSON.stringify(msg, null, 2), 'info');
+            const msgStr = JSON.stringify(msg, null, 2);
+            addMessage('📤 Sending message', 'info');
+            addRawMessage('📤 ' + msgStr, 'info');
             ws.send(JSON.stringify(msg));
         }
         
@@ -254,37 +289,67 @@
             send({ type: 'get_balance' });
         }
         
-        function addBalance() {
-            const amount = parseFloat(document.getElementById('balanceAmount').value);
-            send({
-                type: 'add_balance',
-                amount: amount
+        function postAuction() {
+            const data = {
+                id: document.getElementById('postAuctionId').value,
+                starting_price: parseFloat(document.getElementById('postStartPrice').value),
+                min_duration: parseInt(document.getElementById('postMinDuration').value)
+            };
+            
+            addMessage('Posting auction ' + data.id ,'info');
+            addRawMessage('📤 POST /api/auction: ' + JSON.stringify(data, null, 2), 'info');
+            
+            fetch('http://localhost:8080/api/auction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success){
+                    addMessage('Auction added with success', 'success');
+                }
+                else{
+                    addMessage('Failed to add auction', 'error');
+                }
+                addRawMessage('✅ POST /api/auction response: ' + JSON.stringify(result, null, 2), 'info');
+            })
+            .catch(error => {
+                addMessage('❌ POST /api/auction error: ' + error, 'error');
             });
         }
         
-        function withdrawBalance() {
-            const amount = parseFloat(document.getElementById('balanceAmount').value);
-            send({
-                type: 'withdraw_balance',
-                amount: amount
-            });
-        }
-        
-        function createAuction() {
-            const startingDateInput = document.getElementById('startingDate').value;
-            let startingDate = 0; // Default: start immediately
+        function postUser() {
+            const data = {
+                auction_id: document.getElementById('postUserAuctionId').value,
+                userid: document.getElementById('postUserId').value,
+                balance: parseFloat(document.getElementById('postUserBalance').value)
+            };
             
-            if (startingDateInput) {
-                // Convert datetime-local to Unix timestamp (seconds)
-                startingDate = Math.floor(new Date(startingDateInput).getTime() / 1000);
-            }
+            addMessage('Adding user ' + data.userid + ' to auction ' + data.auction_id, 'info');
+            addRawMessage('📤 POST /api/user: ' + JSON.stringify(data, null, 2), 'info');
             
-            send({
-                type: 'create_auction',
-                item_name: document.getElementById('itemName').value,
-                start_price: parseFloat(document.getElementById('startPrice').value),
-                duration: parseInt(document.getElementById('duration').value),
-                starting_date: startingDate
+            fetch('http://localhost:8080/api/user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success){
+                    addMessage('User added with success', 'success');
+                }
+                else{
+                    addMessage('Failed to add user', 'error');
+                }
+                addRawMessage('✅ POST /api/user response: ' + JSON.stringify(result, null, 2), 'info');
+            })
+            .catch(error => {
+                addMessage('❌ POST /api/user error: ' + error, 'error');
             });
         }
         
@@ -304,10 +369,6 @@
             });
         }
         
-        function getWaitingAuctions() {
-            send({ type: 'get_waiting_auctions' });
-        }
-        
         function getActiveAuctions() {
             send({ type: 'get_active_auctions' });
         }
@@ -320,8 +381,20 @@
             div.scrollIntoView({ behavior: 'smooth' });
         }
         
+        function addRawMessage(text, type = 'info') {
+            const div = document.createElement('div');
+            div.className = 'message ' + type;
+            div.textContent = new Date().toLocaleTimeString() + ' - ' + text;
+            document.getElementById('rawMessages').appendChild(div);
+            div.scrollIntoView({ behavior: 'smooth' });
+        }
+        
         function clearMessages() {
             document.getElementById('messages').innerHTML = '';
+        }
+        
+        function clearRawMessages() {
+            document.getElementById('rawMessages').innerHTML = '';
         }
     </script>
 </body>

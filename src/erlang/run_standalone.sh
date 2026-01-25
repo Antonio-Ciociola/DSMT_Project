@@ -28,4 +28,5 @@ erl -sname "$NODE_NAME" \
     -pa _build/default/lib/cowlib/ebin \
     -pa _build/default/lib/ranch/ebin \
     -pa _build/default/lib/jsx/ebin \
+    -pa _build/default/lib/jose/ebin \
     -eval "auction_app:start_node($HTTP_PORT)."

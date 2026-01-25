@@ -16,8 +16,8 @@
     start_link/1,
     start_auction/1,
     place_bid/3,
-    join_as_participant/2,
-    join_as_spectator/2,
+    join_as_participant/3,
+    join_as_spectator/3,
     leave_auction/2,
     get_auction_state/1,
     force_end/1
@@ -65,13 +65,13 @@ start_auction(Pid) ->
 place_bid(Pid, Username, Amount) ->
     gen_server:call(Pid, {place_bid, Username, Amount}).
 
-%% @doc Join auction as a participant (must be in waitlist)
-join_as_participant(Pid, Username) ->
-    gen_server:call(Pid, {join_participant, Username, self()}).
+%% @doc Join auction as a participant
+join_as_participant(Pid, Username, ClientPid) ->
+    gen_server:call(Pid, {join_participant, Username, ClientPid}).
 
 %% @doc Join auction as a spectator
-join_as_spectator(Pid, Username) ->
-    gen_server:call(Pid, {join_spectator, Username, self()}).
+join_as_spectator(Pid, Username, ClientPid) ->
+    gen_server:call(Pid, {join_spectator, Username, ClientPid}).
 
 %% @doc Leave the auction
 leave_auction(Pid, Username) ->
@@ -91,6 +91,10 @@ force_end(Pid) ->
 
 init([AuctionId]) ->
     io:format("[AUCTION ~p] Initializing handler~n", [AuctionId]),
+    
+    %% Register this process with a name based on auction ID
+    ProcessName = list_to_atom("auction_" ++ AuctionId),
+    register(ProcessName, self()),
     
     %% Load auction details from mnesia
     case mnesia_db:get_auction(AuctionId) of
@@ -198,6 +202,9 @@ handle_call({place_bid, Username, Amount}, _From, State = #state{status = active
                             %% Add bid to mnesia
                             mnesia_db:add_bid(State#state.auction_id, Username, Amount, Timestamp),
                             
+                            %% Update auction winner in Mnesia
+                            mnesia_db:update_auction_winner(State#state.auction_id, Username, Amount),
+                            
                             %% Update state with new bid
                             NewBid = {Username, Amount, Timestamp},
                             NewBids = [NewBid | State#state.bids],
@@ -216,9 +223,17 @@ handle_call({place_bid, Username, Amount}, _From, State = #state{status = active
                             
                             io:format("[AUCTION ~p] Bid accepted! Timer reset. New highest: ~p~n", 
                                      [State#state.auction_id, Amount]),
+                            io:format("[AUCTION ~p] Current participants: ~p~n",
+                                     [State#state.auction_id, NewState#state.participants]),
+                            io:format("[AUCTION ~p] Current spectators: ~p~n",
+                                     [State#state.auction_id, NewState#state.spectators]),
                             
-                            %% Broadcast to all participants and spectators
+                            %% Broadcast to all participants and spectators on THIS node
                             broadcast_state_update(NewState),
+                            
+                            %% Notify ALL nodes with this auction by sending to registered name
+                            io:format("[AUCTION ~p] About to broadcast to all nodes~n", [State#state.auction_id]),
+                            broadcast_to_all_nodes(State#state.auction_id, {bid_update, Username, Amount}),
                             
                             {reply, {ok, accepted}, NewState};
                         {ok, Balance} ->
@@ -239,7 +254,7 @@ handle_call({place_bid, _Username, _Amount}, _From, State) ->
 handle_call({join_participant, Username, ClientPid}, _From, State) ->
     io:format("[AUCTION ~p] Participant joining: ~p~n", [State#state.auction_id, Username]),
     
-    %% Add to participants (no waitlist check needed)
+    %% Add to participants
     NewParticipants = [{Username, ClientPid} | State#state.participants],
     NewState = State#state{participants = NewParticipants},
     
@@ -303,17 +318,15 @@ handle_info(tick, State) ->
             %% Schedule next tick
             TimerRef = erlang:send_after(1000, self(), tick),
             
-            %% Broadcast time update every 5 seconds or last 10 seconds
-            case (RemainingTime rem 5 == 0) orelse (RemainingTime =< 10) of
-                true -> broadcast_state_update(NewState);
-                false -> ok
-            end,
+            %% Don't broadcast on every tick - only when bids happen or auction ends
+            %% Clients can calculate remaining time from duration and start_time
             
             {noreply, NewState#state{timer_ref = TimerRef}};
         completed ->
-            %% Auction ended
+            %% Auction ended - broadcast final state
             io:format("[AUCTION ~p] Time's up! Ending auction~n", [State#state.auction_id]),
             NewState = end_auction(State),
+            broadcast_state_update(NewState),
             {noreply, NewState};
         _ ->
             %% Waiting or other status, ignore tick
@@ -333,6 +346,29 @@ handle_info({'DOWN', _Ref, process, Pid, _Reason}, State) ->
         spectators = NewSpectators
     },
     {noreply, NewState};
+
+%% Handle bid event from other nodes
+handle_info({bid_update, Username, Amount}, State) ->
+    io:format("[AUCTION ~p] Received bid update from cluster: ~p bid ~p~n", 
+             [State#state.auction_id, Username, Amount]),
+    
+    %% Reload auction state from Mnesia to get latest winner
+    case mnesia_db:get_auction(State#state.auction_id) of
+        {ok, {auction, _, _, _, _, _, _, Winner, WinningBid, _, _}} ->
+            %% Update local state with new highest bid from Mnesia
+            NewBid = case Winner of
+                none -> none;
+                _ -> {Winner, WinningBid, erlang:system_time(second)}
+            end,
+            
+            NewState = State#state{highest_bid = NewBid},
+            
+            %% Broadcast to local participants
+            broadcast_state_update(NewState),
+            {noreply, NewState};
+        _ ->
+            {noreply, State}
+    end;
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -386,9 +422,9 @@ end_auction(State) ->
 %% @doc Get auction state as a map for clients
 get_state_info(State) ->
     #{
-        auction_id => State#state.auction_id,
-        item_name => State#state.item_name,
-        creator => State#state.creator,
+        auction_id => list_to_binary(State#state.auction_id),
+        item_name => list_to_binary(State#state.item_name),
+        creator => list_to_binary(State#state.creator),
         min_bid => State#state.min_bid,
         bid_increment => State#state.bid_increment,
         duration => State#state.duration,
@@ -396,7 +432,7 @@ get_state_info(State) ->
         status => State#state.status,
         highest_bid => case State#state.highest_bid of
             none -> none;
-            {User, Amount, _} -> #{username => User, amount => Amount}
+            {User, Amount, _} -> #{username => list_to_binary(User), amount => Amount}
         end,
         bid_count => length(State#state.bids),
         participant_count => length(State#state.participants),
@@ -439,3 +475,24 @@ cancel_timer(none) -> ok;
 cancel_timer(TimerRef) ->
     erlang:cancel_timer(TimerRef),
     ok.
+
+%% @doc Broadcast message to all auction handlers on all nodes
+broadcast_to_all_nodes(AuctionId, Message) ->
+    %% Send to all connected nodes
+    Nodes = [node() | nodes()],
+    io:format("[AUCTION ~p] Broadcasting to nodes: ~p~n", [AuctionId, Nodes]),
+    lists:foreach(fun(Node) ->
+        %% Try to send to auction handler on each node
+        ProcessName = list_to_atom("auction_" ++ AuctionId),
+        io:format("[AUCTION ~p] Looking for process ~p on node ~p~n", [AuctionId, ProcessName, Node]),
+        case rpc:call(Node, erlang, whereis, [ProcessName]) of
+            Pid when is_pid(Pid) ->
+                io:format("[AUCTION ~p] Sending ~p to PID ~p on node ~p~n", [AuctionId, Message, Pid, Node]),
+                Pid ! Message,
+                io:format("[AUCTION ~p] Message sent successfully~n", [AuctionId]);
+            undefined ->
+                io:format("[AUCTION ~p] Process ~p not found on node ~p~n", [AuctionId, ProcessName, Node]);
+            Other ->
+                io:format("[AUCTION ~p] Unexpected whereis result on node ~p: ~p~n", [AuctionId, Node, Other])
+        end
+    end, Nodes).

@@ -34,8 +34,6 @@
     get_completed_auctions/0,
     update_auction_winner/3,
     cancel_auction/1,
-    add_user_to_waitlist/2,
-    get_auction_waitlist/1,
     
     %% Bid operations
     add_bid/4,
@@ -57,9 +55,7 @@
     duration,           % Duration in seconds
     start_time,         % Timestamp when auction starts
     winner = none,      % Username of winner
-    winning_bid = 0.0,
-    node_pid,           % Process handling this auction
-    waitlist = []       % List of usernames waiting to participate
+    winning_bid = 0.0
 }).
 
 -record(bid, {
@@ -330,8 +326,7 @@ add_auction(AuctionId, Creator, ItemName, MinBid, _BidIncrement, Duration, Start
                     item_name = ItemName,
                     min_bid = MinBid,
                     duration = Duration,
-                    start_time = ActualStartTime,
-                    waitlist = []
+                    start_time = ActualStartTime
                 },
                 mnesia:write(Auction),
                 {ok, AuctionId};
@@ -442,41 +437,6 @@ cancel_auction(AuctionId) ->
     case mnesia:transaction(F) of
         {atomic, Result} -> Result;
         {aborted, Reason} -> {error, Reason}
-    end.
-
-%% @doc Add user to auction waitlist
-add_user_to_waitlist(AuctionId, Username) ->
-    F = fun() ->
-        CurrentTime = erlang:system_time(second),
-        case mnesia:read(auction, AuctionId) of
-            [Auction] when Auction#auction.start_time > CurrentTime ->
-                Waitlist = Auction#auction.waitlist,
-                case lists:member(Username, Waitlist) of
-                    false ->
-                        UpdatedAuction = Auction#auction{
-                            waitlist = Waitlist ++ [Username]
-                        },
-                        mnesia:write(UpdatedAuction),
-                        ok;
-                    true ->
-                        {error, already_in_waitlist}
-                end;
-            [_] ->
-                {error, auction_not_waiting};
-            [] ->
-                {error, auction_not_found}
-        end
-    end,
-    case mnesia:transaction(F) of
-        {atomic, Result} -> Result;
-        {aborted, Reason} -> {error, Reason}
-    end.
-
-%% @doc Get auction waitlist
-get_auction_waitlist(AuctionId) ->
-    case get_auction(AuctionId) of
-        {ok, Auction} -> {ok, Auction#auction.waitlist};
-        Error -> Error
     end.
 
 %%%===================================================================
