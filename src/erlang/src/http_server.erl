@@ -14,9 +14,9 @@
 %%% API
 %%%===================================================================
 
-%% @doc Start the HTTP server on default port 8080
+%% @doc Start the HTTP server on default port 8081
 start() ->
-    start(8080).
+    start(8081).
 
 %% @doc Start the HTTP server with WebSocket support on custom port
 start(Port) ->

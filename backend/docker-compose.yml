@@ -41,6 +41,23 @@ services:
       timeout: 5s
       retries: 5
 
+  ### Erlang Backend
+  erlang:
+
+    ### Build configuration for the Erlang service
+    build:
+      context: ../src/erlang
+      dockerfile: Dockerfile
+    container_name: auction-erlang
+    
+    ### Port mapping to expose the Erlang HTTP/WebSocket service on port 8081
+    ports:
+      - "8081:8081"
+    
+    ### Service dependencies
+    # The Erlang service can start independently
+    restart: unless-stopped
+
   ### Java Backend
   backend:
 
@@ -54,6 +71,11 @@ services:
     ### Port mapping to expose the backend service on port 8080
     ports:
       - "8080:8080"
+    
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
     
     ### Environment variables for database connection
     # These should match the MySQL service configuration and will be used by the backend 

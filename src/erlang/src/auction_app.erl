@@ -28,7 +28,7 @@ start(_StartType, _StartArgs) ->
     io:format("[APP] Starting auction application~n"),
     
     %% Start HTTP server on configured port
-    Port = application:get_env(auction_app, http_port, 8080),
+    Port = application:get_env(auction_app, http_port, 8081),
     io:format("[APP] Starting HTTP server on port ~p~n", [Port]),
     http_server:start(Port),
     
@@ -45,7 +45,7 @@ stop(_State) ->
 
 %% @doc Start a node (automatically detects if schema exists)
 start_node() ->
-    start_node(8080).
+    start_node(8081).
 
 %% @doc Start a node with custom HTTP port
 start_node(Port) ->

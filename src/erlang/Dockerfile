@@ -1,0 +1,30 @@
+# Use official Erlang image
+FROM erlang:26-alpine
+
+# Install build tools
+RUN apk add --no-cache bash make git
+
+# Set working directory
+WORKDIR /app
+
+# Copy rebar3 config first for dependency caching
+COPY rebar.config .
+
+# Fetch dependencies
+RUN rebar3 get-deps
+
+# Copy source files and Makefile
+COPY src ./src
+COPY Makefile .
+
+# Compile the project
+RUN make
+
+# Expose the HTTP port
+EXPOSE 8081
+
+# Copy and setup the Docker startup script
+COPY docker_start.sh /usr/local/bin/docker_start.sh
+RUN chmod +x /usr/local/bin/docker_start.sh
+
+CMD ["docker_start.sh"]

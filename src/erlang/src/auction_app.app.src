@@ -12,7 +12,7 @@
         jose
     ]},
     {env, [
-        {http_port, 8080}
+        {http_port, 8081}
     ]},
     {modules, []},
     {licenses, ["Apache 2.0"]},

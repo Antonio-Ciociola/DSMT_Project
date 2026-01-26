@@ -191,6 +191,28 @@
             color: #bbb;
         }
     </style>
+    <script>
+        function joinAuction(auctionId) {
+            console.log('Joining auction:', auctionId);
+            
+            fetch('${pageContext.request.contextPath}/join-auction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'auctionId=' + encodeURIComponent(auctionId)
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Response:', data);
+                alert('Server response: ' + data.message);
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error joining auction');
+            });
+        }
+    </script>
 </head>
 <body>
     <header>
@@ -271,7 +293,7 @@
                             </div>
                             
                             <div class="auction-footer">
-                                <button class="bid-btn">Join</button>
+                                <button class="bid-btn" onclick="joinAuction(${auction.id})">Join</button>
                             </div>
                         </div>
                     </c:forEach>

@@ -111,7 +111,7 @@
             <h2>Connection</h2>
             <div class="form-group">
                 <label>WebSocket URL:</label>
-                <input type="text" id="wsUrl" value="ws://localhost:8080/ws">
+                <input type="text" id="wsUrl" value="ws://localhost:8081/ws">
             </div>
             <div class="form-group">
                 <label>JWT Token:</label>
@@ -297,9 +297,9 @@
             };
             
             addMessage('Posting auction ' + data.id ,'info');
-            addRawMessage('📤 POST /api/auction: ' + JSON.stringify(data, null, 2), 'info');
+            addRawMessage('📤 POST /erlangapi/auction: ' + JSON.stringify(data, null, 2), 'info');
             
-            fetch('http://localhost:8080/api/auction', {
+            fetch('http://localhost:8081/erlangapi/auction', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -314,10 +314,10 @@
                 else{
                     addMessage('Failed to add auction', 'error');
                 }
-                addRawMessage('✅ POST /api/auction response: ' + JSON.stringify(result, null, 2), 'info');
+                addRawMessage('✅ POST /erlangapi/auction response: ' + JSON.stringify(result, null, 2), 'info');
             })
             .catch(error => {
-                addMessage('❌ POST /api/auction error: ' + error, 'error');
+                addMessage('❌ POST /erlangapi/auction error: ' + error, 'error');
             });
         }
         
@@ -329,9 +329,9 @@
             };
             
             addMessage('Adding user ' + data.userid + ' to auction ' + data.auction_id, 'info');
-            addRawMessage('📤 POST /api/user: ' + JSON.stringify(data, null, 2), 'info');
+            addRawMessage('📤 POST /erlangapi/user: ' + JSON.stringify(data, null, 2), 'info');
             
-            fetch('http://localhost:8080/api/user', {
+            fetch('http://localhost:8081/erlangapi/user', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -346,10 +346,10 @@
                 else{
                     addMessage('Failed to add user', 'error');
                 }
-                addRawMessage('✅ POST /api/user response: ' + JSON.stringify(result, null, 2), 'info');
+                addRawMessage('✅ POST /erlangapi/user response: ' + JSON.stringify(result, null, 2), 'info');
             })
             .catch(error => {
-                addMessage('❌ POST /api/user error: ' + error, 'error');
+                addMessage('❌ POST /erlangapi/user error: ' + error, 'error');
             });
         }
         
