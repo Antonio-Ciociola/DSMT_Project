@@ -25,6 +25,8 @@ public class AuctionStarterJob implements Job {
             // Update the auction status to "ongoing"
             AuctionDao auctionDao = new AuctionDao();
             auctionDao.updateAuctionStatus(auctionId, "ongoing");
+
+            // TODO add call to /erlangapi/auction
             
             System.out.println("Auction " + auctionId + " started successfully at " + System.currentTimeMillis());
         } 

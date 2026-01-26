@@ -8,4 +8,7 @@
 - [ ] Detect change on end of auction and on max bid and notify websocket
 - [ ] remove users connected to auction when auction ends
 - [ ] post to java when auction ends
+  - /api/finish-auction
 - [ ] all checks when adding to db, for example 2 times post on user connecting to auction
+- [ ] chiave webtoken
+- [ ] cambiare porta

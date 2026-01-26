@@ -29,8 +29,8 @@ start(Port) ->
             {"/ws", ws_handler, []},
             
             %% POST endpoints for external system
-            {"/api/auction", auction_post_handler, []},
-            {"/api/user", user_post_handler, []},
+            {"/erlangapi/auction", auction_post_handler, []},
+            {"/erlangapi/user", user_post_handler, []},
             
             %% Static health check
             {"/health", health_handler, []},

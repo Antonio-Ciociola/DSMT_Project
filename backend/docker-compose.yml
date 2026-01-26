@@ -21,7 +21,7 @@ services:
     # expose it to the host machine, but it can be useful for debugging (e.g. connecting 
     # with a MySQL client from the host to troubleshoot issues)
     ports:
-      - "3306:3306"
+      - "13306:3306"
     
     ### Volumes for data persistence and initialization script
     # The mysql_data volume will persist the database data across container restarts, to 
