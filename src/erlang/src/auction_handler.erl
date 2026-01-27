@@ -14,6 +14,7 @@
 %% API
 -export([
     start_link/1,
+    start_link/3,
     start_auction/1,
     place_bid/3,
     join_as_participant/3,
@@ -47,15 +48,21 @@
     highest_bid = none,     % {Username, Amount, Timestamp}
     timer_ref = none,       % Reference to countdown timer
     creator,
-    logical_clock = 0       % Lamport logical clock for bid ordering
+    logical_clock = 0,      % Lamport logical clock for bid ordering
+    time_increment_bid = 0  % Time to add when bid is placed (seconds)
 }).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
+%% @doc Start auction handler with default parameters (for backward compatibility)
 start_link(AuctionId) ->
-    gen_server:start_link(?MODULE, [AuctionId], []).
+    start_link(AuctionId, 1, 0).
+
+%% @doc Start auction handler with bid increment and time increment
+start_link(AuctionId, MinIncrementBid, TimeIncrementBid) ->
+    gen_server:start_link(?MODULE, [AuctionId, MinIncrementBid, TimeIncrementBid], []).
 
 %% @doc Start the auction (transition from waiting to active)
 start_auction(Pid) ->
@@ -90,6 +97,9 @@ force_end(Pid) ->
 %%%===================================================================
 
 init([AuctionId]) ->
+    init([AuctionId, 1, 0]);
+
+init([AuctionId, MinIncrementBid, TimeIncrementBid]) ->
     io:format("[AUCTION ~p] Initializing handler~n", [AuctionId]),
     
     %% Register this process with a name based on auction ID
@@ -115,7 +125,7 @@ init([AuctionId]) ->
                 item_name = element(4, Auction),      % item_name field
                 creator = element(3, Auction),         % creator field
                 min_bid = element(5, Auction),         % min_bid field
-                bid_increment = 1,                     % Default value, no longer in DB
+                bid_increment = MinIncrementBid,
                 duration = Duration,
                 remaining_time = RemainingTime,
                 start_time = StartTime,
@@ -123,7 +133,8 @@ init([AuctionId]) ->
                 participants = [],
                 spectators = [],
                 bids = [],
-                highest_bid = none
+                highest_bid = none,
+                time_increment_bid = TimeIncrementBid
             },
             
             %% Start timer if auction is active
@@ -209,6 +220,9 @@ handle_call({place_bid, Username, Amount}, _From, State = #state{status = active
                             NewBid = {Username, Amount, Timestamp},
                             NewBids = [NewBid | State#state.bids],
                             
+                            %% Add time increment to remaining time (instead of full reset)
+                            NewRemainingTime = State#state.remaining_time + State#state.time_increment_bid,
+                            
                             %% Reset countdown timer
                             cancel_timer(State#state.timer_ref),
                             NewTimerRef = erlang:send_after(1000, self(), tick),
@@ -216,13 +230,13 @@ handle_call({place_bid, Username, Amount}, _From, State = #state{status = active
                             NewState = State#state{
                                 bids = NewBids,
                                 highest_bid = NewBid,
-                                remaining_time = State#state.duration,  % Reset timer!
+                                remaining_time = NewRemainingTime,
                                 timer_ref = NewTimerRef,
                                 logical_clock = NewClock
                             },
                             
-                            io:format("[AUCTION ~p] Bid accepted! Timer reset. New highest: ~p~n", 
-                                     [State#state.auction_id, Amount]),
+                            io:format("[AUCTION ~p] Bid accepted! Time added: ~p seconds. New remaining: ~p~n", 
+                                     [State#state.auction_id, State#state.time_increment_bid, NewRemainingTime]),
                             io:format("[AUCTION ~p] Current participants: ~p~n",
                                      [State#state.auction_id, NewState#state.participants]),
                             io:format("[AUCTION ~p] Current spectators: ~p~n",
@@ -310,26 +324,35 @@ handle_info(tick, State) ->
     
     case NewStatus of
         active ->
-            %% Calculate remaining time
-            EndTime = State#state.start_time + State#state.duration,
-            RemainingTime = max(0, EndTime - CurrentTime),
-            NewState = State#state{remaining_time = RemainingTime, status = active},
+            %% Decrement remaining time (don't recalculate from start_time, preserves time increments)
+            NewRemainingTime = max(0, State#state.remaining_time - 1),
             
-            %% Schedule next tick
-            TimerRef = erlang:send_after(1000, self(), tick),
-            
-            %% Don't broadcast on every tick - only when bids happen or auction ends
-            %% Clients can calculate remaining time from duration and start_time
-            
-            {noreply, NewState#state{timer_ref = TimerRef}};
-        completed ->
-            %% Auction ended - broadcast final state
-            io:format("[AUCTION ~p] Time's up! Ending auction~n", [State#state.auction_id]),
-            NewState = end_auction(State),
-            broadcast_state_update(NewState),
-            {noreply, NewState};
+            %% Check if auction should end
+            case NewRemainingTime of
+                0 ->
+                    %% Time's up - end the auction
+                    io:format("[AUCTION ~p] Timer expired! Ending auction~n", [State#state.auction_id]),
+                    NewState = end_auction(State#state{remaining_time = 0}),
+                    broadcast_state_update(NewState),
+                    {noreply, NewState};
+                _ ->
+                    %% Continue countdown
+                    NewState = State#state{remaining_time = NewRemainingTime, status = active},
+                    
+                    %% Schedule next tick
+                    TimerRef = erlang:send_after(1000, self(), tick),
+                    
+                    %% Broadcast time update every 5 seconds or when close to end
+                    ShouldBroadcast = (NewRemainingTime rem 5 == 0) orelse (NewRemainingTime < 10),
+                    case ShouldBroadcast of
+                        true -> broadcast_state_update(NewState);
+                        false -> ok
+                    end,
+                    
+                    {noreply, NewState#state{timer_ref = TimerRef}}
+            end;
         _ ->
-            %% Waiting or other status, ignore tick
+            %% Waiting or completed status, ignore tick
             {noreply, State}
     end;
 

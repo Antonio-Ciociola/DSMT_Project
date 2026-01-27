@@ -38,17 +38,21 @@ handle_post(Req0, State) ->
         #{
             <<"id">> := AuctionId,
             <<"starting_price">> := StartingPrice,
-            <<"min_duration">> := MinDuration
+            <<"min_duration">> := MinDuration,
+            <<"min_increment_bid">> := MinIncrementBid,
+            <<"time_increment_bid">> := TimeIncrementBid
         } = Data,
         
-        io:format("[POST] Received auction: ~p, price: ~p, duration: ~p~n", 
-                  [AuctionId, StartingPrice, MinDuration]),
+        io:format("[POST] Received auction: ~p, price: ~p, duration: ~p, min_inc: ~p, time_inc: ~p~n", 
+                  [AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeIncrementBid]),
         
         %% Store auction in system
         case server:register_auction(
             binary_to_list(AuctionId),
             StartingPrice,
-            MinDuration
+            MinDuration,
+            MinIncrementBid,
+            TimeIncrementBid
         ) of
             ok ->
                 Req = cowboy_req:reply(200, #{

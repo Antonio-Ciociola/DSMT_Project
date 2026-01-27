@@ -10,14 +10,14 @@ WORKDIR /app
 # Copy rebar3 config first for dependency caching
 COPY rebar.config .
 
-# Fetch dependencies
-RUN rebar3 get-deps
+# Fetch and compile dependencies (cached layer)
+RUN rebar3 get-deps && rebar3 compile
 
 # Copy source files and Makefile
 COPY src ./src
 COPY Makefile .
 
-# Compile the project
+# Compile only the application code (dependencies already compiled)
 RUN make
 
 # Expose the HTTP port

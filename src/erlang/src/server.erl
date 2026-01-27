@@ -23,7 +23,7 @@
     deposit_funds/2,
     
     %% External POST endpoints
-    register_auction/3,
+    register_auction/5,
     register_auction_user/3,
     
     %% Auction management
@@ -87,8 +87,8 @@ deposit_funds(Username, Amount) ->
     gen_server:call(?MODULE, {deposit, Username, Amount}).
 
 %% @doc Register an auction from external POST endpoint
-register_auction(AuctionId, StartingPrice, MinDuration) ->
-    gen_server:call(?MODULE, {register_auction, AuctionId, StartingPrice, MinDuration}).
+register_auction(AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeIncrementBid) ->
+    gen_server:call(?MODULE, {register_auction, AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeIncrementBid}).
 
 %% @doc Register a user as active for an auction from external POST endpoint
 register_auction_user(AuctionId, UserId, Balance) ->
@@ -203,8 +203,8 @@ handle_call({create_auction, Creator, ItemName, MinBid, BidIncrement, Duration, 
     %% Create auction in database
     case mnesia_db:add_auction(AuctionId, Creator, ItemName, MinBid, BidIncrement, Duration, StartTime) of
         {ok, _} ->
-            %% Start auction handler process
-            case auction_handler:start_link(AuctionId) of
+            %% Start auction handler process (use BidIncrement, no time increment for legacy)
+            case auction_handler:start_link(AuctionId, BidIncrement, 0) of
                 {ok, Pid} ->
                     NewHandlers = [{AuctionId, Pid} | State#state.auction_handlers],
                     io:format("[SERVER] Auction handler started: ~p -> ~p~n", [AuctionId, Pid]),
@@ -249,14 +249,14 @@ handle_call(get_completed_auctions, _From, State) ->
 %%% POST endpoint handlers
 %%%===================================================================
 
-handle_call({register_auction, AuctionId, StartingPrice, MinDuration}, _From, State) ->
+handle_call({register_auction, AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeIncrementBid}, _From, State) ->
     io:format("[SERVER] Registering auction via POST: ~p~n", [AuctionId]),
     
     %% Create auction in database with system as creator
     case mnesia_db:add_auction(AuctionId, "system", AuctionId, StartingPrice, 0, MinDuration, 0) of
         {ok, _} ->
-            %% Start auction handler process
-            case auction_handler:start_link(AuctionId) of
+            %% Start auction handler process with additional parameters
+            case auction_handler:start_link(AuctionId, MinIncrementBid, TimeIncrementBid) of
                 {ok, Pid} ->
                     NewHandlers = [{AuctionId, Pid} | State#state.auction_handlers],
                     io:format("[SERVER] Auction handler started: ~p -> ~p~n", [AuctionId, Pid]),
