@@ -1,8 +1,15 @@
 # Build stage (optional, if you want to build inside Docker)
 FROM maven:3.9-eclipse-temurin-17 AS build
-COPY . /app
 WORKDIR /app
-RUN mvn clean package
+
+# Copy only pom.xml first to leverage Docker cache for dependencies
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+
+# Now copy source code and build
+COPY src ./src
+COPY server.xml .
+RUN mvn package -DskipTests -o
 
 # Run stage
 FROM tomcat:10.1-jdk17-temurin

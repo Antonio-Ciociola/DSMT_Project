@@ -79,8 +79,12 @@ public class CreateAuctionServlet extends HttpServlet {
         String description = request.getParameter("description");
         String startingPriceStr = request.getParameter("startingPrice");
         String minBidIncrementStr = request.getParameter("minBidIncrement");
-        String initialWaitTimeStr = request.getParameter("initialWaitTime");
-        String bidTimeIncrementStr = request.getParameter("bidTimeIncrement");
+        String initialWaitHoursStr = request.getParameter("initialWaitHours");
+        String initialWaitMinutesStr = request.getParameter("initialWaitMinutes");
+        String initialWaitSecondsStr = request.getParameter("initialWaitSeconds");
+        String bidTimeHoursStr = request.getParameter("bidTimeHours");
+        String bidTimeMinutesStr = request.getParameter("bidTimeMinutes");
+        String bidTimeSecondsStr = request.getParameter("bidTimeSeconds");
         String startDateStr = request.getParameter("startDate");
         String startTimeStr = request.getParameter("startTime");
 
@@ -120,32 +124,44 @@ public class CreateAuctionServlet extends HttpServlet {
             return;
         }
 
-        error = ValidationUtils.validateRequired(initialWaitTimeStr, "Initial wait time");
-        if (error != null) {
-            request.setAttribute("errorMessage", error);
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-
-        error = ValidationUtils.validateRequired(bidTimeIncrementStr, "Bid time increment");
-        if (error != null) {
-            request.setAttribute("errorMessage", error);
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
-
         // Parse and validate numeric/date inputs
         double startingPrice;
         double minBidIncrement;
-        int initialWaitTime;
-        int bidTimeIncrement;
+        int initialWaitTimeSeconds;
+        int bidTimeIncrementSeconds;
         LocalDateTime auctionStartDateTime;
 
         try {
             startingPrice = ValidationUtils.validatePositiveDouble(startingPriceStr, "Starting price");
             minBidIncrement = ValidationUtils.validateStrictlyPositiveDouble(minBidIncrementStr, "Minimum bid increment");
-            initialWaitTime = ValidationUtils.validatePositiveInteger(initialWaitTimeStr, "Initial wait time");
-            bidTimeIncrement = ValidationUtils.validatePositiveInteger(bidTimeIncrementStr, "Bid time increment");
+            
+            // Parse time components with defaults of 0
+            int initialWaitHours = initialWaitHoursStr != null && !initialWaitHoursStr.isEmpty() 
+                ? Integer.parseInt(initialWaitHoursStr) : 0;
+            int initialWaitMinutes = initialWaitMinutesStr != null && !initialWaitMinutesStr.isEmpty() 
+                ? Integer.parseInt(initialWaitMinutesStr) : 0;
+            int initialWaitSeconds = initialWaitSecondsStr != null && !initialWaitSecondsStr.isEmpty() 
+                ? Integer.parseInt(initialWaitSecondsStr) : 0;
+            
+            int bidTimeHours = bidTimeHoursStr != null && !bidTimeHoursStr.isEmpty() 
+                ? Integer.parseInt(bidTimeHoursStr) : 0;
+            int bidTimeMinutes = bidTimeMinutesStr != null && !bidTimeMinutesStr.isEmpty() 
+                ? Integer.parseInt(bidTimeMinutesStr) : 0;
+            int bidTimeSeconds = bidTimeSecondsStr != null && !bidTimeSecondsStr.isEmpty() 
+                ? Integer.parseInt(bidTimeSecondsStr) : 0;
+            
+            // Convert to total seconds
+            initialWaitTimeSeconds = (initialWaitHours * 3600) + (initialWaitMinutes * 60) + initialWaitSeconds;
+            bidTimeIncrementSeconds = (bidTimeHours * 3600) + (bidTimeMinutes * 60) + bidTimeSeconds;
+            
+            // Validate that at least one time value is greater than 0
+            if (initialWaitTimeSeconds <= 0) {
+                throw new ValidationException("Initial wait time must be greater than 0");
+            }
+            if (bidTimeIncrementSeconds <= 0) {
+                throw new ValidationException("Bid time increment must be greater than 0");
+            }
+            
             auctionStartDateTime = ValidationUtils.validateFutureDateTime(startDateStr, startTimeStr);
         } catch (ValidationException e) {
             request.setAttribute("errorMessage", e.getMessage());
@@ -165,8 +181,8 @@ public class CreateAuctionServlet extends HttpServlet {
             auction.setMinBidIncrement(minBidIncrement);
             auction.setStartDate(auctionStartDateTime);
             auction.setStatus("not_started");
-            auction.setInitialWaitTime(initialWaitTime);
-            auction.setBidTimeIncrement(bidTimeIncrement);
+            auction.setInitialWaitTime(initialWaitTimeSeconds);
+            auction.setBidTimeIncrement(bidTimeIncrementSeconds);
 
             // Insert auction into database
             int auctionId = auctionService.createAuction(auction);

@@ -128,6 +128,26 @@
             min-height: 120px;
         }
         
+        .time-inputs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        
+        .time-input-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .time-input-group label {
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        
+        .time-input-group input {
+            width: 100%;
+        }
+        
         .button-group {
             display: flex;
             gap: 10px;
@@ -211,13 +231,39 @@
                 </div>
                 
                 <div class="form-group">
-                    <label for="initialWaitTime">Initial Wait Time (minutes):</label>
-                    <input type="number" id="initialWaitTime" name="initialWaitTime" required min="1" placeholder="60">
+                    <label>Initial Wait Time:</label>
+                    <div class="time-inputs">
+                        <div class="time-input-group">
+                            <label for="initialWaitHours">Hours</label>
+                            <input type="number" id="initialWaitHours" name="initialWaitHours" min="0" value="0" placeholder="0">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="initialWaitMinutes">Minutes</label>
+                            <input type="number" id="initialWaitMinutes" name="initialWaitMinutes" min="0" max="59" value="0" placeholder="0">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="initialWaitSeconds">Seconds</label>
+                            <input type="number" id="initialWaitSeconds" name="initialWaitSeconds" min="0" max="59" value="0" placeholder="0">
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="form-group">
-                    <label for="bidTimeIncrement">Bid Time Increment (minutes):</label>
-                    <input type="number" id="bidTimeIncrement" name="bidTimeIncrement" required min="1" placeholder="5">
+                    <label>Bid Time Increment:</label>
+                    <div class="time-inputs">
+                        <div class="time-input-group">
+                            <label for="bidTimeHours">Hours</label>
+                            <input type="number" id="bidTimeHours" name="bidTimeHours" min="0" value="0" placeholder="0">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="bidTimeMinutes">Minutes</label>
+                            <input type="number" id="bidTimeMinutes" name="bidTimeMinutes" min="0" max="59" value="0" placeholder="0">
+                        </div>
+                        <div class="time-input-group">
+                            <label for="bidTimeSeconds">Seconds</label>
+                            <input type="number" id="bidTimeSeconds" name="bidTimeSeconds" min="0" max="59" value="0" placeholder="0">
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="form-group">

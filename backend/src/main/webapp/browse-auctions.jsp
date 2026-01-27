@@ -205,11 +205,17 @@
             .then(response => response.json())
             .then(data => {
                 console.log('Response:', data);
-                alert('Server response: ' + data.message);
+                if (data.success) {
+                    // Successfully joined - redirect to auction page
+                    window.location.href = '${pageContext.request.contextPath}/auction/' + auctionId;
+                } else {
+                    // Show error message
+                    alert('Error: ' + (data.error || 'Failed to join auction'));
+                }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Error joining auction');
+                alert('Error joining auction: ' + error.message);
             });
         }
     </script>
