@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS auctions (
     status ENUM('not_started', 'ongoing', 'finished') NOT NULL DEFAULT 'not_started',
     winner_user_id INT NULL,
     final_price DECIMAL(10, 2) NULL,
-    initial_wait_time INT NOT NULL,
+    starting_duration INT NOT NULL,
     bid_time_increment INT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (winner_user_id) REFERENCES users(id) ON DELETE SET NULL

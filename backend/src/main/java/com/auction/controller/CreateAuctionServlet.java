@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpSession;
 import org.quartz.SchedulerException;
 import java.io.IOException;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
 /**
  * Servlet implementation class CreateAuctionServlet
@@ -87,6 +88,7 @@ public class CreateAuctionServlet extends HttpServlet {
         String bidTimeSecondsStr = request.getParameter("bidTimeSeconds");
         String startDateStr = request.getParameter("startDate");
         String startTimeStr = request.getParameter("startTime");
+        String startNow = request.getParameter("startNow");
 
         // Validate required fields, forward with error if any are missing
         String error = ValidationUtils.validateRequired(title, "Title");
@@ -110,24 +112,27 @@ public class CreateAuctionServlet extends HttpServlet {
             return;
         }
 
-        error = ValidationUtils.validateRequired(startDateStr, "Start date");
-        if (error != null) {
-            request.setAttribute("errorMessage", error);
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
-        }
+        // Only validate date/time if startNow is not checked
+        if (!"true".equals(startNow)) {
+            error = ValidationUtils.validateRequired(startDateStr, "Start date");
+            if (error != null) {
+                request.setAttribute("errorMessage", error);
+                request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
+                return;
+            }
 
-        error = ValidationUtils.validateRequired(startTimeStr, "Start time");
-        if (error != null) {
-            request.setAttribute("errorMessage", error);
-            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
-            return;
+            error = ValidationUtils.validateRequired(startTimeStr, "Start time");
+            if (error != null) {
+                request.setAttribute("errorMessage", error);
+                request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
+                return;
+            }
         }
 
         // Parse and validate numeric/date inputs
         double startingPrice;
         double minBidIncrement;
-        int initialWaitTimeSeconds;
+        int startingDurationSeconds;
         int bidTimeIncrementSeconds;
         LocalDateTime auctionStartDateTime;
 
@@ -151,20 +156,30 @@ public class CreateAuctionServlet extends HttpServlet {
                 ? Integer.parseInt(bidTimeSecondsStr) : 0;
             
             // Convert to total seconds
-            initialWaitTimeSeconds = (initialWaitHours * 3600) + (initialWaitMinutes * 60) + initialWaitSeconds;
+            startingDurationSeconds = (initialWaitHours * 3600) + (initialWaitMinutes * 60) + initialWaitSeconds;
             bidTimeIncrementSeconds = (bidTimeHours * 3600) + (bidTimeMinutes * 60) + bidTimeSeconds;
             
             // Validate that at least one time value is greater than 0
-            if (initialWaitTimeSeconds <= 0) {
-                throw new ValidationException("Initial wait time must be greater than 0");
+            if (startingDurationSeconds <= 0) {
+                throw new ValidationException("Starting duration must be greater than 0");
             }
             if (bidTimeIncrementSeconds <= 0) {
                 throw new ValidationException("Bid time increment must be greater than 0");
             }
             
-            auctionStartDateTime = ValidationUtils.validateFutureDateTime(startDateStr, startTimeStr);
+            // JavaScript already converted to UTC, so just parse and validate
+            if ("true".equals(startNow)) {
+                auctionStartDateTime = LocalDateTime.now(ZoneOffset.UTC);
+            } else {
+                // startDateStr and startTimeStr are already in UTC from JavaScript
+                auctionStartDateTime = ValidationUtils.validateFutureDateTime(startDateStr, startTimeStr);
+            }
         } catch (ValidationException e) {
             request.setAttribute("errorMessage", e.getMessage());
+            request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
+            return;
+        } catch (NumberFormatException e) {
+            request.setAttribute("errorMessage", "Invalid number format for time values");
             request.getRequestDispatcher("/create-auction.jsp").forward(request, response);
             return;
         }
@@ -181,7 +196,7 @@ public class CreateAuctionServlet extends HttpServlet {
             auction.setMinBidIncrement(minBidIncrement);
             auction.setStartDate(auctionStartDateTime);
             auction.setStatus("not_started");
-            auction.setInitialWaitTime(initialWaitTimeSeconds);
+            auction.setStartingDuration(startingDurationSeconds);
             auction.setBidTimeIncrement(bidTimeIncrementSeconds);
 
             // Insert auction into database

@@ -2,6 +2,7 @@ package com.auction.util;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
@@ -115,19 +116,49 @@ public class ValidationUtils {
 
     /**
      * Validates a future date and time (must not be in the past).
-     * @param dateStr the date string (yyyy-MM-dd)
-     * @param timeStr the time string (HH:mm)
-     * @return the parsed LocalDateTime, or throws exception with error message
+     * Assumes the input is already in UTC.
+     * @param dateStr the date string (yyyy-MM-dd) in UTC
+     * @param timeStr the time string (HH:mm) in UTC
+     * @return the parsed LocalDateTime in UTC, or throws exception with error message
      */
     public static LocalDateTime validateFutureDateTime(String dateStr, String timeStr) throws ValidationException {
         try {
             String combined = dateStr + " " + timeStr;
             LocalDateTime dateTime = LocalDateTime.parse(combined, DATETIME_FORMATTER);
-            LocalDateTime now = LocalDateTime.now();
-            if (dateTime.isBefore(now)) {
+            LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
+            if (dateTime.isBefore(nowUtc)) {
                 throw new ValidationException("Start date and time cannot be in the past.");
             }
             return dateTime;
+        } catch (DateTimeParseException e) {
+            throw new ValidationException("Invalid date or time format.");
+        }
+    }
+
+    /**
+     * Validates a future date and time with timezone conversion to UTC.
+     * @param dateStr the date string (yyyy-MM-dd) in user's local timezone
+     * @param timeStr the time string (HH:mm) in user's local timezone
+     * @param timezoneOffsetMinutes the timezone offset in minutes (negative for UTC+, positive for UTC-)
+     * @return the parsed LocalDateTime in UTC, or throws exception with error message
+     */
+    public static LocalDateTime validateFutureDateTimeWithTimezone(String dateStr, String timeStr, int timezoneOffsetMinutes) throws ValidationException {
+        try {
+            String combined = dateStr + " " + timeStr;
+            LocalDateTime localDateTime = LocalDateTime.parse(combined, DATETIME_FORMATTER);
+            
+            // Convert user's local time to UTC
+            // timezoneOffsetMinutes is negative for UTC+ (e.g., -60 for UTC+1)
+            // We need to subtract the offset to convert to UTC
+            LocalDateTime utcDateTime = localDateTime.plusMinutes(timezoneOffsetMinutes);
+            
+            // Check if the UTC time is in the past
+            LocalDateTime nowUtc = LocalDateTime.now(ZoneOffset.UTC);
+            if (utcDateTime.isBefore(nowUtc)) {
+                throw new ValidationException("Start date and time cannot be in the past.");
+            }
+            
+            return utcDateTime;
         } catch (DateTimeParseException e) {
             throw new ValidationException("Invalid date or time format.");
         }

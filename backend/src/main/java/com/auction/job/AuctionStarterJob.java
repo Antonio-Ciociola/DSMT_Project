@@ -80,7 +80,7 @@ public class AuctionStarterJob implements Job {
                 "{\"id\":\"auction_%d\",\"starting_price\":%.2f,\"min_duration\":%d,\"min_increment_bid\":%.2f,\"time_increment_bid\":%d}",
                 auction.getId(),
                 auction.getStartingPrice(),
-                auction.getInitialWaitTime(),
+                auction.getStartingDuration(),
                 auction.getMinBidIncrement(),
                 auction.getBidTimeIncrement()
             );

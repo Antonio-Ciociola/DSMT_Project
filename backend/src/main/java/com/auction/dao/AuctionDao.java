@@ -20,7 +20,7 @@ public class AuctionDao {
         // SQL query to join auctions with users to get owner and winner usernames
         String sql = "SELECT a.id, a.user_id, a.title, a.description, a.starting_price, a.min_bid_increment, " +
                      "a.start_date, a.status, a.winner_user_id, a.final_price, " +
-                     "a.initial_wait_time, a.bid_time_increment, u.username as owner_username, " +
+                     "a.starting_duration, a.bid_time_increment, u.username as owner_username, " +
                      "w.username as winner_username " +
                      "FROM auctions a " +
                      "JOIN users u ON a.user_id = u.id " +
@@ -50,7 +50,7 @@ public class AuctionDao {
         // SQL query to get auctions for a user that haven't started yet
         String sql = "SELECT id, user_id, title, description, starting_price, min_bid_increment, " +
                      "start_date, status, winner_user_id, final_price, " +
-                     "initial_wait_time, bid_time_increment FROM auctions " +
+                     "starting_duration, bid_time_increment FROM auctions " +
                      "WHERE user_id = ? AND start_date > NOW() ORDER BY start_date ASC";
         
         // Getting DB connection, preparing the statement with userId, 
@@ -80,7 +80,7 @@ public class AuctionDao {
 
         // SQL insert statement to add a new auction
         String sql = "INSERT INTO auctions (user_id, title, description, starting_price, min_bid_increment, " +
-                     "start_date, status, initial_wait_time, bid_time_increment) " +
+                     "start_date, status, starting_duration, bid_time_increment) " +
                      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
         // Getting DB connection, preparing the statement with auction details
@@ -95,7 +95,7 @@ public class AuctionDao {
             pstmt.setDouble(5, auction.getMinBidIncrement());
             pstmt.setTimestamp(6, Timestamp.valueOf(auction.getStartDate()));
             pstmt.setString(7, auction.getStatus() != null ? auction.getStatus() : "not_started");
-            pstmt.setInt(8, auction.getInitialWaitTime());
+            pstmt.setInt(8, auction.getStartingDuration());
             pstmt.setInt(9, auction.getBidTimeIncrement());
             pstmt.executeUpdate();
             
@@ -147,7 +147,7 @@ public class AuctionDao {
         
         // SQL query to get auction details by ID
         String sql = "SELECT id, user_id, title, description, starting_price, min_bid_increment, " +
-                     "start_date, status, winner_user_id, final_price, initial_wait_time, bid_time_increment " +
+                     "start_date, status, winner_user_id, final_price, starting_duration, bid_time_increment " +
                      "FROM auctions WHERE id = ?";
 
         // Getting DB connection, preparing the statement with auctionId, 
@@ -198,7 +198,7 @@ public class AuctionDao {
         Timestamp ts = rs.getTimestamp("start_date");
         auction.setStartDate(ts != null ? ts.toLocalDateTime() : null);
         auction.setStatus(rs.getString("status"));
-        auction.setInitialWaitTime(rs.getInt("initial_wait_time"));
+        auction.setStartingDuration(rs.getInt("starting_duration"));
         auction.setBidTimeIncrement(rs.getInt("bid_time_increment"));
         
         // Handle nullable winner fields

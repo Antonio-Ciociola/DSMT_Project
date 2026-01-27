@@ -15,7 +15,7 @@ public class Auction {
     private Integer winnerUserId;
     private String winnerUsername;
     private Double finalPrice;
-    private int initialWaitTime;
+    private int startingDuration;
     private int bidTimeIncrement;
 
     public int getId() {
@@ -114,12 +114,12 @@ public class Auction {
         this.finalPrice = finalPrice;
     }
 
-    public int getInitialWaitTime() {
-        return initialWaitTime;
+    public int getStartingDuration() {
+        return startingDuration;
     }
 
-    public void setInitialWaitTime(int initialWaitTime) {
-        this.initialWaitTime = initialWaitTime;
+    public void setStartingDuration(int startingDuration) {
+        this.startingDuration = startingDuration;
     }
 
     public int getBidTimeIncrement() {

@@ -173,6 +173,34 @@
             transform: scale(0.98);
         }
     </style>
+    <script>
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            let result = '';
+            if (hours > 0) result += hours + 'h ';
+            if (minutes > 0) result += minutes + 'm ';
+            if (secs > 0 || result === '') result += secs + 's';
+            
+            return result.trim();
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            // Format all bid time increment displays
+            document.querySelectorAll('[id^="bidTime-"]').forEach(function(element) {
+                const seconds = parseInt(element.textContent);
+                element.textContent = formatTime(seconds);
+            });
+            
+            // Format all starting duration displays
+            document.querySelectorAll('[id^="startDuration-"]').forEach(function(element) {
+                const seconds = parseInt(element.textContent);
+                element.textContent = formatTime(seconds);
+            });
+        });
+    </script>
 </head>
 <body>
     <div class="container">
@@ -218,8 +246,12 @@
                                     <span class="detail-value">$${auction.minBidIncrement}</span>
                                 </div>
                                 <div class="detail-item">
-                                    <span class="detail-label">Bid Countdown Timer</span>
-                                    <span class="detail-value">${auction.countdownTimer} min</span>
+                                    <span class="detail-label">Bid Time Increment</span>
+                                    <span class="detail-value" id="bidTime-${auction.id}">${auction.bidTimeIncrement} sec</span>
+                                </div>
+                                <div class="detail-item">
+                                    <span class="detail-label">Starting Duration</span>
+                                    <span class="detail-value" id="startDuration-${auction.id}">${auction.startingDuration} sec</span>
                                 </div>
                                 <div class="detail-item">
                                     <span class="detail-label">Start Date & Time</span>

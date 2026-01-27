@@ -108,11 +108,16 @@
             border-radius: 10px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
             transition: transform 0.3s, box-shadow 0.3s;
+            text-decoration: none;
+            display: block;
+            color: inherit;
+            cursor: pointer;
         }
         
         .feature-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.15);
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
         }
         
         .feature-card h3 {
@@ -130,24 +135,6 @@
         .feature-icon {
             font-size: 40px;
             margin-bottom: 15px;
-        }
-        
-        .feature-link {
-            display: inline-block;
-            margin-top: 15px;
-            padding: 8px 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 5px;
-            font-size: 13px;
-            font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        
-        .feature-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 3px 10px rgba(102, 126, 234, 0.3);
         }
     </style>
 </head>
@@ -170,51 +157,47 @@
         <div class="welcome-section">
             <h2>Welcome to the Auction System!</h2>
             <p>
-                You have successfully logged in. This is your dashboard where you can manage auctions, 
-                place bids, and track your items. Use the features below to get started.
+                You have successfully logged in. This is your dashboard where you can browse auctions, 
+                place bids, delete auctions, manage balance. Use the features below to get started.
             </p>
         </div>
         
         <div class="features">
-            <div class="feature-card">
+            <a href="${pageContext.request.contextPath}/browse-auctions" class="feature-card">
                 <div class="feature-icon">📦</div>
                 <h3>Browse Auctions</h3>
-                <p>Explore active auctions and find items of interest. Filter by category and price range.</p>
-                <a href="${pageContext.request.contextPath}/browse-auctions" class="feature-link">Get Started</a>
-            </div>
+                <p>Explore active auctions and find items of interest.</p>
+            </a>
             
-            <div class="feature-card">
+            <% if ("Guest".equals(username)) { %>
+                <a href="${pageContext.request.contextPath}/login.jsp" class="feature-card">
+            <% } else { %>
+                <a href="${pageContext.request.contextPath}/create-auction" class="feature-card">
+            <% } %>
                 <div class="feature-icon">🏷️</div>
                 <h3>Create Auction</h3>
                 <p>List your own items for auction. Set starting price, duration, and detailed descriptions.</p>
-                <% if ("Guest".equals(username)) { %>
-                    <a href="${pageContext.request.contextPath}/login.jsp" class="feature-link">Get Started</a>
-                <% } else { %>
-                    <a href="${pageContext.request.contextPath}/create-auction" class="feature-link">Get Started</a>
-                <% } %>
-            </div>
+            </a>
             
-            <div class="feature-card">
+            <% if ("Guest".equals(username)) { %>
+                <a href="${pageContext.request.contextPath}/login.jsp" class="feature-card">
+            <% } else { %>
+                <a href="${pageContext.request.contextPath}/delete-auction" class="feature-card">
+            <% } %>
                 <div class="feature-icon">🗑️</div>
                 <h3>Delete Auctions</h3>
-                <p>Remove your auctions that are no longer needed or manage your active listings.</p>
-                <% if ("Guest".equals(username)) { %>
-                    <a href="${pageContext.request.contextPath}/login.jsp" class="feature-link">Get Started</a>
-                <% } else { %>
-                    <a href="${pageContext.request.contextPath}/delete-auction" class="feature-link">Get Started</a>
-                <% } %>
-            </div>
+                <p>Remove your auctions that are no longer needed.</p>
+            </a>
             
-            <div class="feature-card">
+            <% if ("Guest".equals(username)) { %>
+                <a href="${pageContext.request.contextPath}/login.jsp" class="feature-card">
+            <% } else { %>
+                <a href="${pageContext.request.contextPath}/balance" class="feature-card">
+            <% } %>
                 <div class="feature-icon">💰</div>
                 <h3>Manage Balance</h3>
-                <p>View your account balance, deposit funds, and track your transaction history.</p>
-                <% if ("Guest".equals(username)) { %>
-                    <a href="${pageContext.request.contextPath}/login.jsp" class="feature-link">Get Started</a>
-                <% } else { %>
-                    <a href="${pageContext.request.contextPath}/balance" class="feature-link">Get Started</a>
-                <% } %>
-            </div>
+                <p>View your account balance, deposit funds.</p>
+            </a>
         </div>
     </div>
 </body>

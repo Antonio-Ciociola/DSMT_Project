@@ -1,5 +1,11 @@
 <%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
 <%@ taglib uri="http://java.sun.com/jsp/jstl/core" prefix="c" %>
+<%
+    String username = (String) session.getAttribute("username");
+    boolean isGuest = (username == null);
+    pageContext.setAttribute("isGuest", isGuest);
+    pageContext.setAttribute("username", username);
+%>
 <!DOCTYPE html>
 <html>
 <head>
@@ -192,6 +198,44 @@
         }
     </style>
     <script>
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            
+            const parts = [];
+            if (hours > 0) parts.push(hours + 'h');
+            if (minutes > 0) parts.push(minutes + 'm');
+            if (secs > 0 || parts.length === 0) parts.push(secs + 's');
+            
+            return parts.join(' ');
+        }
+        
+        function formatDate(dateStr) {
+            // dateStr is in format "2024-01-27T15:30:00" from LocalDateTime
+            // We need to treat it as UTC and convert to local time
+            const utcDate = new Date(dateStr + 'Z'); // Add 'Z' to indicate UTC
+            const options = {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            return utcDate.toLocaleString('en-GB', options).replace(',', '');
+        }
+        
+        // Convert UTC dates to local time on page load
+        window.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('[data-utc-date]').forEach(function(element) {
+                const utcDate = element.getAttribute('data-utc-date');
+                if (utcDate && utcDate !== '') {
+                    element.textContent = formatDate(utcDate);
+                }
+            });
+        });
+        
         function joinAuction(auctionId) {
             console.log('Joining auction:', auctionId);
             
@@ -265,13 +309,17 @@
                                     </div>
                                     
                                     <div class="detail-item">
-                                        <div class="detail-label">Initial Wait Time</div>
-                                        <div class="detail-value">${auction.initialWaitTime} min</div>
+                                        <div class="detail-label">Starting Duration</div>
+                                        <div class="detail-value">
+                                            <script>document.write(formatTime(${auction.startingDuration}));</script>
+                                        </div>
                                     </div>
                                     
                                     <div class="detail-item">
                                         <div class="detail-label">Bid Time Increment</div>
-                                        <div class="detail-value">${auction.bidTimeIncrement} min</div>
+                                        <div class="detail-value">
+                                            <script>document.write(formatTime(${auction.bidTimeIncrement}));</script>
+                                        </div>
                                     </div>
                                     
                                     <div class="detail-item">
@@ -280,8 +328,8 @@
                                     </div>
                                     
                                     <div class="detail-item">
-                                        <div class="detail-label">Starts</div>
-                                        <div class="detail-value">${auction.startDate}</div>
+                                        <div class="detail-label">Start Date</div>
+                                        <div class="detail-value" data-utc-date="${auction.startDate}"></div>
                                     </div>
                                     
                                     <c:if test="${auction.status == 'finished'}">
@@ -298,9 +346,11 @@
                                 </div>
                             </div>
                             
-                            <div class="auction-footer">
-                                <button class="bid-btn" onclick="joinAuction(${auction.id})">Join</button>
-                            </div>
+                            <c:if test="${isGuest == false && auction.status == 'ongoing'}">
+                                <div class="auction-footer">
+                                    <button class="bid-btn" onclick="joinAuction(${auction.id})">Join</button>
+                                </div>
+                            </c:if>
                         </div>
                     </c:forEach>
                 </div>
