@@ -533,10 +533,7 @@ broadcast_auction_ended(State, Winner, Amount) ->
     %% Send to all spectators
     lists:foreach(fun({_Username, Pid}) ->
         Pid ! Message
-    end, State#state.spectators),
-    
-    %% Notify master node about auction completion
-    notify_master_auction_complete(State#state.auction_id, Winner, Amount, State#state.total_duration).
+    end, State#state.spectators).
 
 %% @doc Notify master node about auction completion
 notify_master_auction_complete(AuctionId, Winner, Amount, TotalDuration) ->
