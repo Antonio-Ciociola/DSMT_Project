@@ -16,7 +16,7 @@ public class UserDao {
     public Optional<User> findByUsername(String username) throws SQLException {
         
         // SQL query to get user details by username
-        String sql = "SELECT id, username, password, balance FROM users WHERE username = ?";
+        String sql = "SELECT id, username, password, balance, auction_id_bidding FROM users WHERE username = ?";
         
         // Getting DB connection, preparing the statement with username, 
         // executing the query and mapping result to User object
@@ -45,7 +45,7 @@ public class UserDao {
     public Optional<User> findById(int userId) throws SQLException {
 
         // SQL query to get user details by ID
-        String sql = "SELECT id, username, password, balance FROM users WHERE id = ?";
+        String sql = "SELECT id, username, password, balance, auction_id_bidding FROM users WHERE id = ?";
         
         // Getting DB connection, preparing the statement with userId, 
         // executing the query and mapping result to User object
@@ -174,6 +174,38 @@ public class UserDao {
         }
     }
 
+    // Set the auction the user is currently bidding in
+    public void setAuctionIdBidding(int userId, Integer auctionId) throws SQLException {
+        String sql = "UPDATE users SET auction_id_bidding = ? WHERE id = ?";
+        
+        try (
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)
+        ) {
+            if (auctionId == null) {
+                pstmt.setNull(1, java.sql.Types.INTEGER);
+            } else {
+                pstmt.setInt(1, auctionId);
+            }
+            pstmt.setInt(2, userId);
+            pstmt.executeUpdate();
+        }
+    }
+    
+    // Clear auction_id_bidding for all users in a specific auction
+    public void clearAuctionIdBiddingForAuction(int auctionId) throws SQLException {
+        String sql = "UPDATE users SET auction_id_bidding = NULL WHERE auction_id_bidding = ?";
+        
+        try (
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)
+        ) {
+            pstmt.setInt(1, auctionId);
+            int updated = pstmt.executeUpdate();
+            System.out.format("[DAO] Cleared auction_id_bidding for %d users in auction %d%n", updated, auctionId);
+        }
+    }
+
     // Helper method to map a ResultSet row to a User object
     private User mapUser(ResultSet rs) throws SQLException {
         User user = new User();
@@ -181,6 +213,13 @@ public class UserDao {
         user.setUsername(rs.getString("username"));
         user.setPassword(rs.getString("password"));
         user.setBalance(rs.getBigDecimal("balance"));
+        
+        // Handle nullable auction_id_bidding
+        int auctionIdBidding = rs.getInt("auction_id_bidding");
+        if (!rs.wasNull()) {
+            user.setAuctionIdBidding(auctionIdBidding);
+        }
+        
         return user;
     }
 }

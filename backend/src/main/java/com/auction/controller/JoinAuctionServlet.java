@@ -1,6 +1,7 @@
 package com.auction.controller;
 
 import com.auction.model.Auction;
+import com.auction.model.User;
 import com.auction.service.AuctionService;
 import com.auction.service.UserService;
 import jakarta.servlet.ServletException;
@@ -85,6 +86,21 @@ public class JoinAuctionServlet extends HttpServlet {
                 username = "guest_owner_" + userId;
             }
             
+            // Check if user is already in another auction (only for non-guests)
+            if (!isGuest && userId != null) {
+                Optional<User> userOpt = userService.getUserById(userId);
+                if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    Integer currentAuctionId = user.getAuctionIdBidding();
+                    
+                    if (currentAuctionId != null && currentAuctionId != auctionId) {
+                        System.out.println("User " + userId + " is already in auction " + currentAuctionId + " - forcing guest mode for auction " + auctionId);
+                        isGuest = true;
+                        username = "guest_" + username;
+                    }
+                }
+            }
+            
             // Only allow joining if auction is ongoing
             if (!"ongoing".equalsIgnoreCase(auctionStatus)) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -109,6 +125,10 @@ public class JoinAuctionServlet extends HttpServlet {
                     System.err.println("Balance is null for user " + userId + ", defaulting to 0");
                     balance = BigDecimal.ZERO;
                 }
+                
+                // Set the auction_id_bidding for this user (they are now actively in this auction)
+                userService.setAuctionIdBidding(userId, auctionId);
+                System.out.println("Set auction_id_bidding=" + auctionId + " for user " + userId);
             } else {
                 System.out.println("Guest user - balance set to 0");
             }

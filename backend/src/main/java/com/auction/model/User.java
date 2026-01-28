@@ -7,6 +7,7 @@ public class User {
     private String username;
     private String password;
     private BigDecimal balance;
+    private Integer auctionIdBidding; // NULL if not currently in an auction
 
     public int getId() {
         return id;
@@ -38,5 +39,13 @@ public class User {
 
     public void setBalance(BigDecimal balance) {
         this.balance = balance;
+    }
+
+    public Integer getAuctionIdBidding() {
+        return auctionIdBidding;
+    }
+
+    public void setAuctionIdBidding(Integer auctionIdBidding) {
+        this.auctionIdBidding = auctionIdBidding;
     }
 }

@@ -378,13 +378,40 @@
                             
                             <c:if test="${auction.status == 'ongoing'}">
                                 <div class="auction-footer">
-                                    <button class="bid-btn" onclick="joinAuction(${auction.id})">
-                                        <c:choose>
-                                            <c:when test="${isGuest}">View (Guest)</c:when>
-                                            <c:when test="${currentUserId == auction.userId}">View (Owner)</c:when>
-                                            <c:otherwise>Join</c:otherwise>
-                                        </c:choose>
-                                    </button>
+                                    <c:choose>
+                                        <c:when test="${not empty currentAuctionIdBidding and currentAuctionIdBidding == auction.id}">
+                                            <button class="bid-btn" onclick="joinAuction(${auction.id})" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+                                                ⚡ Active Auction
+                                            </button>
+                                            <div style="margin-top: 8px; font-size: 12px; color: #28a745; text-align: center;">
+                                                You are currently bidding in this auction
+                                            </div>
+                                        </c:when>
+                                        <c:when test="${not empty currentAuctionIdBidding and currentAuctionIdBidding != auction.id}">
+                                            <button class="bid-btn" onclick="joinAuction(${auction.id})" style="background: #6c757d;">
+                                                👁️ View Only
+                                            </button>
+                                            <div style="margin-top: 8px; font-size: 12px; color: #666; text-align: center;">
+                                                You are active in another auction
+                                            </div>
+                                        </c:when>
+                                        <c:when test="${currentUserId == auction.userId}">
+                                            <button class="bid-btn" onclick="joinAuction(${auction.id})" style="background: #6c757d;">
+                                                🏠 View (Owner)
+                                            </button>
+                                            <div style="margin-top: 8px; font-size: 12px; color: #666; text-align: center;">
+                                                You own this auction
+                                            </div>
+                                        </c:when>
+                                        <c:otherwise>
+                                            <button class="bid-btn" onclick="joinAuction(${auction.id})">
+                                                <c:choose>
+                                                    <c:when test="${isGuest}">👁️ View</c:when>
+                                                    <c:otherwise>🎯 Join</c:otherwise>
+                                                </c:choose>
+                                            </button>
+                                        </c:otherwise>
+                                    </c:choose>
                                 </div>
                             </c:if>
                         </div>

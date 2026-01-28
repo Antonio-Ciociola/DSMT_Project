@@ -520,6 +520,8 @@
         const numericAuctionId = '${auction.id}';
         let timerInterval = null;
         let remainingTime = 0;
+        let auctionEndTime = null;  // Absolute timestamp when auction ends
+        let serverTimeDiff = 0;     // Difference between server and client time
         let keepAliveInterval = null;
         
         console.log('Variables initialized:');
@@ -549,7 +551,23 @@
                 
                 const bidSection = document.querySelector('.bid-section');
                 if (bidSection) {
-                    bidSection.innerHTML = '<h3>👁️ Viewing only</h3>';
+                    // Check JWT to determine reason for guest mode
+                    const token = localStorage.getItem('jwtToken_' + numericAuctionId);
+                    let message = '👁️ Viewing as Guest - You are viewing this auction in read-only mode. Log in to place bids.';
+                    
+                    if (token) {
+                        const payload = decodeJWT(token);
+                        if (payload && payload.sub) {
+                            const username = payload.sub;
+                            if (username.startsWith('guest_owner_')) {
+                                message = '👁️ Owner View - You cannot bid on your own auction.';
+                            } else if (username.startsWith('guest_')) {
+                                message = '👁️ View Only - You are currently active in another auction.';
+                            }
+                        }
+                    }
+                    
+                    bidSection.innerHTML = '<h3>👁️ Viewing only</h3><p style="margin-top: 10px; color: #666;">' + message + '</p>';
                 }
             }
         }
@@ -694,24 +712,44 @@
         }
         
         function updateAuctionInfo(state) {
-            // Update status
-            
-            // Update time remaining and start countdown
-            remainingTime = state.remaining_time;
-            updateTimerDisplay();
-            
-            // Clear existing timer and start new one
-            if (timerInterval) {
-                clearInterval(timerInterval);
-            }
-            timerInterval = setInterval(() => {
-                if (remainingTime > 0) {
-                    remainingTime--;
-                    updateTimerDisplay();
-                } else {
-                    clearInterval(timerInterval);
+            // Always update time sync when receiving server updates
+            // This handles cases where client clock changes during auction
+            if (state.server_time && state.auction_end_time) {
+                const clientTime = Math.floor(Date.now() / 1000);
+                const newServerTimeDiff = state.server_time - clientTime;
+                
+                // Detect if client clock changed significantly (more than 2 seconds drift)
+                if (Math.abs(newServerTimeDiff - serverTimeDiff) > 2) {
+                    console.warn('⚠️ Client clock drift detected! Old diff:', serverTimeDiff, 'New diff:', newServerTimeDiff);
+                    serverTimeDiff = newServerTimeDiff;
+                } else if (!serverTimeDiff) {
+                    // First time sync
+                    serverTimeDiff = newServerTimeDiff;
                 }
-            }, 1000);
+                
+                auctionEndTime = state.auction_end_time;
+                
+                console.log('⏰ Time sync - Server:', state.server_time, 'Client:', clientTime, 'Diff:', serverTimeDiff, 'End:', auctionEndTime);
+            }
+            
+            // Start local countdown timer if not already running
+            if (!timerInterval && auctionEndTime) {
+                timerInterval = setInterval(() => {
+                    const currentTime = Math.floor(Date.now() / 1000) + serverTimeDiff;
+                    remainingTime = Math.max(0, auctionEndTime - currentTime);
+                    updateTimerDisplay();
+                    
+                    if (remainingTime <= 0) {
+                        clearInterval(timerInterval);
+                        timerInterval = null;
+                    }
+                }, 1000);
+                
+                // Update immediately
+                const currentTime = Math.floor(Date.now() / 1000) + serverTimeDiff;
+                remainingTime = Math.max(0, auctionEndTime - currentTime);
+                updateTimerDisplay();
+            }
             
             // Update bid count
             document.getElementById('bidCount').textContent = state.bid_count || 0;

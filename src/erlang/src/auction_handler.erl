@@ -468,6 +468,17 @@ end_auction(State) ->
 
 %% @doc Get auction state as a map for clients
 get_state_info(State) ->
+    %% Calculate auction end time (timestamp when auction will end)
+    CurrentTime = erlang:system_time(second),
+    AuctionEndTime = case State#state.status of
+        active ->
+            %% For active auctions, end time is current time + remaining time
+            CurrentTime + State#state.remaining_time;
+        _ ->
+            %% For non-active auctions, use start_time + total_duration
+            State#state.start_time + State#state.total_duration
+    end,
+    
     #{
         auction_id => list_to_binary(State#state.auction_id),
         item_name => list_to_binary(State#state.item_name),
@@ -476,7 +487,9 @@ get_state_info(State) ->
         bid_increment => State#state.bid_increment,
         duration => State#state.duration,
         total_duration => State#state.total_duration,
-        remaining_time => State#state.remaining_time,
+        remaining_time => State#state.remaining_time,  % Keep for backwards compatibility
+        auction_end_time => AuctionEndTime,  % New: absolute timestamp
+        server_time => CurrentTime,  % New: current server time for sync
         status => State#state.status,
         highest_bid => case State#state.highest_bid of
             none -> none;
@@ -487,20 +500,19 @@ get_state_info(State) ->
         spectator_count => length(State#state.spectators)
     }.
 
-%% @doc Broadcast state update to all connected clients
+%% @doc Broadcast state update to all connected clients (asynchronous)
 broadcast_state_update(State) ->
     StateInfo = get_state_info(State),
     Message = {auction_update, StateInfo},
     
-    %% Send to all participants
-    lists:foreach(fun({_Username, Pid}) ->
-        Pid ! Message
-    end, State#state.participants),
-    
-    %% Send to all spectators
-    lists:foreach(fun({_Username, Pid}) ->
-        Pid ! Message
-    end, State#state.spectators).
+    %% Spawn a separate process to handle broadcasting
+    %% This prevents blocking the gen_server during message delivery
+    AllClients = State#state.participants ++ State#state.spectators,
+    spawn(fun() ->
+        lists:foreach(fun({_Username, Pid}) ->
+            Pid ! Message
+        end, AllClients)
+    end).
 
 %% @doc Broadcast auction end notification
 broadcast_auction_ended(State, Winner, Amount) ->

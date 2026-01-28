@@ -1,9 +1,10 @@
--- Create users table
+-- Create users table (without auction_id_bidding foreign key yet)
 CREATE TABLE IF NOT EXISTS users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(100) NOT NULL,
-    balance DECIMAL(10, 2) DEFAULT 0
+    balance DECIMAL(10, 2) DEFAULT 0,
+    auction_id_bidding INT NULL
 );
 
 -- Create auctions table
@@ -25,6 +26,11 @@ CREATE TABLE IF NOT EXISTS auctions (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (winner_user_id) REFERENCES users(id) ON DELETE SET NULL
 );
+
+-- Now add the foreign key constraint for auction_id_bidding (after both tables exist)
+ALTER TABLE users 
+ADD CONSTRAINT fk_users_auction_bidding 
+FOREIGN KEY (auction_id_bidding) REFERENCES auctions(id) ON DELETE SET NULL;
 
 -- Create sample data
 INSERT INTO users (username, password, balance) VALUES 

@@ -50,4 +50,19 @@ public class UserService {
     public void addToBalance(int userId, BigDecimal amount) throws SQLException {
         userDao.addToBalance(userId, amount);
     }
+    
+    // Get user by ID
+    public Optional<User> getUserById(int userId) throws SQLException {
+        return userDao.findById(userId);
+    }
+    
+    // Set the auction the user is currently bidding in
+    public void setAuctionIdBidding(int userId, Integer auctionId) throws SQLException {
+        userDao.setAuctionIdBidding(userId, auctionId);
+    }
+    
+    // Clear auction_id_bidding for all users in a specific auction
+    public void clearAuctionIdBiddingForAuction(int auctionId) throws SQLException {
+        userDao.clearAuctionIdBiddingForAuction(auctionId);
+    }
 }

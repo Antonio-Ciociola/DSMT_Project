@@ -70,11 +70,19 @@ public class AuctionService {
         // Transfer balance from winner to seller
         BigDecimal amount = BigDecimal.valueOf(finalPrice);
         userDao.transferBalance(winnerUserId, sellerId, amount);
+        
+        // Clear auction_id_bidding for all users who were in this auction
+        userDao.clearAuctionIdBiddingForAuction(auctionId);
+        System.out.format("[SERVICE] Cleared auction_id_bidding for auction %d%n", auctionId);
     }
     
     // Finish an auction with no winner (no bids received)
     public void finishAuctionWithNoWinner(int auctionId, int totalDuration) throws SQLException {
         // Update auction status to finished with no winner
         auctionDao.finishAuctionWithNoWinner(auctionId, totalDuration);
+        
+        // Clear auction_id_bidding for all users who were in this auction
+        userDao.clearAuctionIdBiddingForAuction(auctionId);
+        System.out.format("[SERVICE] Cleared auction_id_bidding for auction %d (no winner)%n", auctionId);
     }
 }
