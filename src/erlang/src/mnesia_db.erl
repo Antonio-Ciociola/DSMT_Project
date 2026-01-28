@@ -35,6 +35,12 @@
     update_auction_winner/3,
     cancel_auction/1,
     
+    %% Auction assignment operations
+    assign_auction_to_slave/2,
+    get_auction_assignment/1,
+    get_slave_auction_count/1,
+    get_least_loaded_slave/1,
+    
     %% Bid operations
     add_bid/4,
     get_auction_bids/1,
@@ -56,6 +62,12 @@
     start_time,         % Timestamp when auction starts
     winner = none,      % Username of winner
     winning_bid = 0.0
+}).
+
+-record(auction_assignment, {
+    auction_id,         % Primary key - auction ID
+    slave_node,         % Node name of assigned slave (e.g., 'auction_slave1@erlang-slave1')
+    slave_port          % WebSocket port of the slave (e.g., 8082)
 }).
 
 -record(bid, {
@@ -141,6 +153,17 @@ init_tables() ->
         {atomic, ok} -> io:format("[MNESIA] Bid table created~n");
         {aborted, {already_exists, bid}} -> io:format("[MNESIA] Bid table exists~n");
         Error3 -> io:format("[MNESIA] Error creating bid table: ~p~n", [Error3])
+    end,
+    
+    %% Create auction_assignment table for slave load balancing
+    case mnesia:create_table(auction_assignment, [
+        {attributes, record_info(fields, auction_assignment)},
+        {disc_copies, [node()]},
+        {type, set}
+    ]) of
+        {atomic, ok} -> io:format("[MNESIA] Auction assignment table created~n");
+        {aborted, {already_exists, auction_assignment}} -> io:format("[MNESIA] Auction assignment table exists~n");
+        Error4 -> io:format("[MNESIA] Error creating auction assignment table: ~p~n", [Error4])
     end,
     
     ok.
@@ -496,3 +519,62 @@ get_highest_bid(AuctionId) ->
             {ok, HighestBid};
         Error -> Error
     end.
+
+%%%===================================================================
+%%% Auction Assignment operations
+%%%===================================================================
+
+%% @doc Assign an auction to a slave node
+assign_auction_to_slave(AuctionId, {SlaveNode, SlavePort}) ->
+    F = fun() ->
+        Assignment = #auction_assignment{
+            auction_id = AuctionId,
+            slave_node = SlaveNode,
+            slave_port = SlavePort
+        },
+        mnesia:write(Assignment),
+        ok
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Result} -> Result;
+        {aborted, Reason} -> {error, Reason}
+    end.
+
+%% @doc Get the slave assignment for an auction
+get_auction_assignment(AuctionId) ->
+    F = fun() -> mnesia:read(auction_assignment, AuctionId) end,
+    case mnesia:transaction(F) of
+        {atomic, [Assignment]} -> {ok, Assignment};
+        {atomic, []} -> {error, not_found};
+        {aborted, Reason} -> {error, Reason}
+    end.
+
+%% @doc Count auctions assigned to a specific slave
+get_slave_auction_count(SlaveNode) ->
+    F = fun() ->
+        MatchHead = #auction_assignment{slave_node = SlaveNode, _ = '_'},
+        Assignments = mnesia:match_object(MatchHead),
+        length(Assignments)
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Count} -> {ok, Count};
+        {aborted, Reason} -> {error, Reason}
+    end.
+
+%% @doc Get the least loaded slave from a list of available slaves
+get_least_loaded_slave(AvailableSlaves) ->
+    %% AvailableSlaves format: [{SlaveNode, Port}, ...]
+    SlaveCounts = lists:map(fun({SlaveNode, Port}) ->
+        {ok, Count} = get_slave_auction_count(SlaveNode),
+        {SlaveNode, Port, Count}
+    end, AvailableSlaves),
+    
+    %% Find slave with minimum count
+    {MinNode, MinPort, _MinCount} = lists:foldl(fun
+        ({Node, Port, Count}, {_AccNode, _AccPort, AccCount}) when Count < AccCount ->
+            {Node, Port, Count};
+        (_, Acc) ->
+            Acc
+    end, hd(SlaveCounts), tl(SlaveCounts)),
+    
+    {MinNode, MinPort}.

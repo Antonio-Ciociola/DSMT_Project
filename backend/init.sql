@@ -19,7 +19,9 @@ CREATE TABLE IF NOT EXISTS auctions (
     winner_user_id INT NULL,
     final_price DECIMAL(10, 2) NULL,
     starting_duration INT NOT NULL,
+    total_duration INT NULL,
     bid_time_increment INT NOT NULL,
+    websocket_url VARCHAR(200) NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (winner_user_id) REFERENCES users(id) ON DELETE SET NULL
 );

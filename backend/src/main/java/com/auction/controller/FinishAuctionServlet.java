@@ -44,6 +44,10 @@ public class FinishAuctionServlet extends HttpServlet {
             String auctionIdStr = request.getParameter("auctionId");
             String winnerIdStr = request.getParameter("winnerId");
             String finalPriceStr = request.getParameter("finalPrice");
+            String totalDurationStr = request.getParameter("totalDuration");
+            
+            System.out.format("[FINISH-AUCTION] Received params - auctionId: %s, winnerId: %s, finalPrice: %s, totalDuration: %s%n",
+                     auctionIdStr, winnerIdStr, finalPriceStr, totalDurationStr);
             
             // Validate required parameters and parse/validate values
             String error = ValidationUtils.validateRequired(auctionIdStr, "auctionId");
@@ -73,15 +77,25 @@ public class FinishAuctionServlet extends HttpServlet {
                 return;
             }
             
-            // Parse and validate numeric values using ValidationUtils
+            // Parse and validate values
             int auctionId;
-            int winnerId;
+            String winnerUsername;
             double finalPrice;
+            int totalDuration = 0;
             
             try {
                 auctionId = ValidationUtils.validatePositiveInteger(auctionIdStr, "auctionId");
-                winnerId = ValidationUtils.validatePositiveInteger(winnerIdStr, "winnerId");
-                finalPrice = ValidationUtils.validatePositiveDouble(finalPriceStr, "finalPrice");
+                // winnerUsername is "0" for auctions with no bids
+                winnerUsername = winnerIdStr != null ? winnerIdStr.trim() : "0";
+                // finalPrice can be 0 for auctions with no bids
+                finalPrice = ValidationUtils.validateNonNegativeDouble(finalPriceStr, "finalPrice");
+                // totalDuration is optional, defaults to 0 if not provided
+                if (totalDurationStr != null && !totalDurationStr.trim().isEmpty()) {
+                    totalDuration = ValidationUtils.validateNonNegativeInteger(totalDurationStr, "totalDuration");
+                }
+                
+                System.out.format("[FINISH-AUCTION] Parsed values - auctionId: %d, winner: %s, price: %.2f, totalDuration: %d%n",
+                         auctionId, winnerUsername, finalPrice, totalDuration);
             } catch (ValidationException e) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
                 try (PrintWriter out = response.getWriter()) {
@@ -110,14 +124,20 @@ public class FinishAuctionServlet extends HttpServlet {
                 return;
             }
             
-            // Finish the auction
-            auctionService.finishAuction(auctionId, winnerId, finalPrice);
-            
-            // Return success response
-            response.setStatus(HttpServletResponse.SC_OK);
-            try (PrintWriter out = response.getWriter()) {
-                out.printf("{\"message\": \"Auction %d finished successfully. Winner: %d, Final Price: $%.2f\"}%n", 
-                           auctionId, winnerId, finalPrice);
+            // Finish the auction (winnerUsername "0" means no winner)
+            if ("0".equals(winnerUsername)) {
+                auctionService.finishAuctionWithNoWinner(auctionId, totalDuration);
+                response.setStatus(HttpServletResponse.SC_OK);
+                try (PrintWriter out = response.getWriter()) {
+                    out.printf("{\"message\": \"Auction %d finished with no winner (no bids received).\"}%n", auctionId);
+                }
+            } else {
+                auctionService.finishAuction(auctionId, winnerUsername, finalPrice, totalDuration);
+                response.setStatus(HttpServletResponse.SC_OK);
+                try (PrintWriter out = response.getWriter()) {
+                    out.printf("{\"message\": \"Auction %d finished successfully. Winner: %s, Final Price: $%.2f\"}%n", 
+                               auctionId, winnerUsername, finalPrice);
+                }
             }
             
         } 

@@ -2,9 +2,11 @@
 <%@ taglib uri="http://java.sun.com/jsp/jstl/core" prefix="c" %>
 <%
     String username = (String) session.getAttribute("username");
+    Integer userId = (Integer) session.getAttribute("userId");
     boolean isGuest = (username == null);
     pageContext.setAttribute("isGuest", isGuest);
     pageContext.setAttribute("username", username);
+    pageContext.setAttribute("currentUserId", userId);
 %>
 <!DOCTYPE html>
 <html>
@@ -250,6 +252,11 @@
             .then(data => {
                 console.log('Response:', data);
                 if (data.success) {
+                    // Store JWT token and WebSocket URL for this auction
+                    localStorage.setItem('jwtToken_' + auctionId, data.jwtToken);
+                    localStorage.setItem('websocketUrl_' + auctionId, data.websocketUrl);
+                    console.log('Stored JWT and WebSocket URL for auction ' + auctionId);
+                    
                     // Successfully joined - redirect to auction page
                     window.location.href = '${pageContext.request.contextPath}/auction/' + auctionId;
                 } else {
@@ -315,12 +322,24 @@
                                         </div>
                                     </div>
                                     
-                                    <div class="detail-item">
-                                        <div class="detail-label">Bid Time Increment</div>
-                                        <div class="detail-value">
-                                            <script>document.write(formatTime(${auction.bidTimeIncrement}));</script>
-                                        </div>
-                                    </div>
+                                    <c:choose>
+                                        <c:when test="${auction.status == 'finished'}">
+                                            <div class="detail-item">
+                                                <div class="detail-label">Total Duration</div>
+                                                <div class="detail-value">
+                                                    <script>document.write(formatTime(${auction.totalDuration}));</script>
+                                                </div>
+                                            </div>
+                                        </c:when>
+                                        <c:otherwise>
+                                            <div class="detail-item">
+                                                <div class="detail-label">Bid Time Increment</div>
+                                                <div class="detail-value">
+                                                    <script>document.write(formatTime(${auction.bidTimeIncrement}));</script>
+                                                </div>
+                                            </div>
+                                        </c:otherwise>
+                                    </c:choose>
                                     
                                     <div class="detail-item">
                                         <div class="detail-label">Status</div>
@@ -335,20 +354,37 @@
                                     <c:if test="${auction.status == 'finished'}">
                                         <div class="detail-item">
                                             <div class="detail-label">Winner</div>
-                                            <div class="detail-value"><strong>${auction.winnerUsername}</strong></div>
+                                            <div class="detail-value">
+                                                <c:choose>
+                                                    <c:when test="${not empty auction.winnerUsername}">
+                                                        <strong>${auction.winnerUsername}</strong>
+                                                    </c:when>
+                                                    <c:otherwise>
+                                                        No Winner
+                                                    </c:otherwise>
+                                                </c:choose>
+                                            </div>
                                         </div>
                                         
-                                        <div class="detail-item">
-                                            <div class="detail-label">Final Price</div>
-                                            <div class="detail-value price">$${String.format("%.2f", auction.finalPrice)}</div>
-                                        </div>
+                                        <c:if test="${not empty auction.finalPrice and auction.finalPrice > 0}">
+                                            <div class="detail-item">
+                                                <div class="detail-label">Final Price</div>
+                                                <div class="detail-value price">$${String.format("%.2f", auction.finalPrice)}</div>
+                                            </div>
+                                        </c:if>
                                     </c:if>
                                 </div>
                             </div>
                             
-                            <c:if test="${isGuest == false && auction.status == 'ongoing'}">
+                            <c:if test="${auction.status == 'ongoing'}">
                                 <div class="auction-footer">
-                                    <button class="bid-btn" onclick="joinAuction(${auction.id})">Join</button>
+                                    <button class="bid-btn" onclick="joinAuction(${auction.id})">
+                                        <c:choose>
+                                            <c:when test="${isGuest}">View (Guest)</c:when>
+                                            <c:when test="${currentUserId == auction.userId}">View (Owner)</c:when>
+                                            <c:otherwise>Join</c:otherwise>
+                                        </c:choose>
+                                    </button>
                                 </div>
                             </c:if>
                         </div>

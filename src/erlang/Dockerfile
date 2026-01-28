@@ -2,7 +2,7 @@
 FROM erlang:26-alpine
 
 # Install build tools
-RUN apk add --no-cache bash make git
+RUN apk add --no-cache bash make git curl
 
 # Set working directory
 WORKDIR /app

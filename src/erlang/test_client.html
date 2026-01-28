@@ -100,6 +100,7 @@
             background: #f5fff5;
         }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
 </head>
 <body>
     <h1>🎯 Auction WebSocket Test Client</h1>
@@ -109,22 +110,48 @@
     <div class="container">
         <div class="panel">
             <h2>Connection</h2>
+            <p style="font-size: 12px; color: #666;">💡 WebSocket connects to <strong>slave nodes</strong> (8082 or 8083)</p>
+            <div class="form-group">
+                <label>Slave Node:</label>
+                <select id="slaveNode" onchange="updateWsUrl()">
+                    <option value="8082">Slave 1 (Port 8082)</option>
+                    <option value="8083">Slave 2 (Port 8083)</option>
+                </select>
+            </div>
             <div class="form-group">
                 <label>WebSocket URL:</label>
-                <input type="text" id="wsUrl" value="ws://localhost:8081/ws">
+                <input type="text" id="wsUrl" value="ws://localhost:8082/ws" readonly style="background: #f0f0f0;">
+            </div>
+            <div class="form-group">
+                <label>User ID:</label>
+                <input type="text" id="testUserId" value="testUser">
+            </div>
+            <div class="form-group">
+                <label>Auction ID:</label>
+                <input type="text" id="testAuctionId" value="testAuction">
+            </div>
+            <div class="form-group">
+                <label>Balance:</label>
+                <input type="number" id="testBalance" value="1000" step="0.01">
+            </div>
+            <div class="form-group">
+                <label>JWT Secret:</label>
+                <input type="text" id="jwtSecret" value="DSMT_PROJECT_SECRETKEY_MINIMUM_48_BYTES_FOR_HS384">
             </div>
             <div class="form-group">
                 <label>JWT Token:</label>
                 <input type="text" id="jwtToken" value="" placeholder="Paste JWT token here">
             </div>
+            <button onclick="randomCredentials()">🎲 Random Credentials</button>
+            <button onclick="generateTestToken()">Generate JWT</button>
             <button id="connectBtn" onclick="connect()">Connect</button>
             <button id="disconnectBtn" onclick="disconnect()" disabled>Disconnect</button>
-            <button onclick="generateTestToken()">Generate Test Token</button>
             
             <h2>User Info</h2>
             <button onclick="getBalance()">Get Balance</button>
             
-            <h2>POST Endpoints (External System)</h2>
+            <h2>POST Endpoints (Master Node)</h2>
+            <p style="font-size: 12px; color: #666;">📮 POST requests go to <strong>master node</strong> (port 8081)</p>
             <div class="form-group">
                 <label>Auction ID:</label>
                 <input type="text" id="postAuctionId" value="auction_001">
@@ -147,27 +174,8 @@
             </div>
             <button onclick="postAuction()">POST Auction</button>
             
-            <br>
-            <div class="form-group">
-                <label>User ID:</label>
-                <input type="text" id="postUserId" value="user123">
-            </div>
-            <div class="form-group">
-                <label>User Balance:</label>
-                <input type="number" id="postUserBalance" value="1000">
-            </div>
-            <div class="form-group">
-                <label>For Auction ID:</label>
-                <input type="text" id="postUserAuctionId" value="auction_001">
-            </div>
-            <button onclick="postUser()">POST User</button>
-            
             <h2>Auction Operations</h2>
-            <div class="form-group">
-                <label>Auction ID:</label>
-                <input type="text" id="auctionId">
-            </div>
-            <button onclick="connectAuction()">Connect as Participant</button>
+            <p style="font-size: 12px; color: #666;">🔗 Auction ID comes from JWT token - connection is automatic</p>
             <button onclick="getActiveAuctions()">Get Active Auctions</button>
             
             <br>
@@ -194,6 +202,13 @@
     <script>
         let ws = null;
         let lastBidAmount = {}; // Track last bid per auction to avoid spam
+        let currentAuctionId = null; // Auction ID from JWT token
+        let keepAliveInterval = null; // Keepalive timer
+        
+        function updateWsUrl() {
+            const port = document.getElementById('slaveNode').value;
+            document.getElementById('wsUrl').value = 'ws://localhost:' + port + '/ws';
+        }
         
         function connect() {
             const url = document.getElementById('wsUrl').value;
@@ -215,6 +230,14 @@
                 document.getElementById('status').textContent = 'Connected to ' + url;
                 document.getElementById('connectBtn').disabled = true;
                 document.getElementById('disconnectBtn').disabled = false;
+                
+                // Start keepalive - send ping every 30 seconds
+                keepAliveInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({type: 'ping'}));
+                        console.log('Sent keepalive ping');
+                    }
+                }, 30000);
             };
             
             ws.onmessage = (event) => {
@@ -257,6 +280,12 @@
                 document.getElementById('status').textContent = 'Disconnected';
                 document.getElementById('connectBtn').disabled = false;
                 document.getElementById('disconnectBtn').disabled = true;
+                
+                // Clear keepalive interval
+                if (keepAliveInterval) {
+                    clearInterval(keepAliveInterval);
+                    keepAliveInterval = null;
+                }
             };
         }
         
@@ -264,6 +293,11 @@
             if (ws) {
                 ws.close();
                 ws = null;
+            }
+            // Clear keepalive interval
+            if (keepAliveInterval) {
+                clearInterval(keepAliveInterval);
+                keepAliveInterval = null;
             }
         }
         
@@ -278,19 +312,65 @@
             ws.send(JSON.stringify(msg));
         }
         
+        function randomCredentials() {
+            const randomUserId = 'user' + Math.floor(Math.random() * 10000);
+            const randomAuctionId = 'auction_' + Math.floor(Math.random() * 1000);
+            
+            document.getElementById('testUserId').value = randomUserId;
+            document.getElementById('testAuctionId').value = randomAuctionId;
+            
+            addMessage('🎲 Generated random credentials: ' + randomUserId + ' / ' + randomAuctionId, 'info');
+        }
+        
         function generateTestToken() {
-            // Generate a simple test token (NOT FOR PRODUCTION!)
-            // In real use, this would come from your auth server
-            const userId = 'user' + Math.floor(Math.random() * 1000);
+            // Get values from input fields
+            const userId = document.getElementById('testUserId').value;
+            const auctionId = document.getElementById('testAuctionId').value;
+            const balance = parseFloat(document.getElementById('testBalance').value);
+            const jwtSecret = document.getElementById('jwtSecret').value;
             const expireDate = Math.floor(Date.now() / 1000) + 3600; // 1 hour from now
+            const issuedAt = Math.floor(Date.now() / 1000);
             
-            // This is just a placeholder - in production, you'd sign with private key
-            const payload = btoa(JSON.stringify({userid: userId, expiredate: expireDate}));
-            const testToken = 'TEST.' + payload + '.SIGNATURE';
+            // Create JWT header
+            const header = {
+                alg: 'HS384',
+                typ: 'JWT'
+            };
             
-            document.getElementById('jwtToken').value = testToken;
-            addMessage('Generated test token for user: ' + userId, 'info');
-            addMessage('⚠️ Note: This is an unsigned test token. Server needs proper JWT verification disabled for testing!', 'error');
+            // Create JWT payload (matching Java backend format)
+            const payload = {
+                sub: userId,          // Subject is the username
+                auctionId: auctionId,
+                balance: balance,
+                iat: issuedAt,        // Issued at
+                exp: expireDate       // Expiration
+            };
+            
+            // Base64url encode header and payload
+            const base64UrlEncode = (obj) => {
+                return btoa(JSON.stringify(obj))
+                    .replace(/\+/g, '-')
+                    .replace(/\//g, '_')
+                    .replace(/=+$/, '');
+            };
+            
+            const encodedHeader = base64UrlEncode(header);
+            const encodedPayload = base64UrlEncode(payload);
+            const dataToSign = encodedHeader + '.' + encodedPayload;
+            
+            // Sign with HMAC-SHA384
+            const signature = CryptoJS.HmacSHA384(dataToSign, jwtSecret);
+            const base64Signature = signature.toString(CryptoJS.enc.Base64)
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+            
+            const realToken = dataToSign + '.' + base64Signature;
+            
+            document.getElementById('jwtToken').value = realToken;
+            addMessage('✅ Generated REAL JWT token for user: ' + userId + ', auction: ' + auctionId + ', balance: ' + balance, 'success');
+            addMessage('🔑 Signed with JWT Secret: ' + jwtSecret + ' (HMAC-SHA384)', 'info');
+            addMessage('📝 Token length: ' + realToken.length + ' chars', 'info');
         }
         
         function getBalance() {
@@ -319,10 +399,14 @@
             .then(response => response.json())
             .then(result => {
                 if (result.success){
-                    addMessage('Auction added with success', 'success');
+                    addMessage('✅ Auction created successfully!', 'success');
+                    if (result.websocket_url) {
+                        addMessage('🔗 WebSocket URL: ' + result.websocket_url, 'success');
+                        addMessage('📌 Assigned to: ' + result.slave_node + ' (port ' + result.slave_port + ')', 'info');
+                    }
                 }
                 else{
-                    addMessage('Failed to add auction', 'error');
+                    addMessage('❌ Failed to add auction: ' + (result.error || 'Unknown error'), 'error');
                 }
                 addRawMessage('✅ POST /erlangapi/auction response: ' + JSON.stringify(result, null, 2), 'info');
             })
@@ -331,50 +415,9 @@
             });
         }
         
-        function postUser() {
-            const data = {
-                auction_id: document.getElementById('postUserAuctionId').value,
-                userid: document.getElementById('postUserId').value,
-                balance: parseFloat(document.getElementById('postUserBalance').value)
-            };
-            
-            addMessage('Adding user ' + data.userid + ' to auction ' + data.auction_id, 'info');
-            addRawMessage('📤 POST /erlangapi/user: ' + JSON.stringify(data, null, 2), 'info');
-            
-            fetch('http://localhost:8081/erlangapi/user', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(data)
-            })
-            .then(response => response.json())
-            .then(result => {
-                if (result.success){
-                    addMessage('User added with success', 'success');
-                }
-                else{
-                    addMessage('Failed to add user', 'error');
-                }
-                addRawMessage('✅ POST /erlangapi/user response: ' + JSON.stringify(result, null, 2), 'info');
-            })
-            .catch(error => {
-                addMessage('❌ POST /erlangapi/user error: ' + error, 'error');
-            });
-        }
-        
-        function connectAuction() {
-            send({
-                type: 'connect_auction',
-                auction_id: document.getElementById('auctionId').value,
-                role: 'participant'
-            });
-        }
-        
         function placeBid() {
             send({
                 type: 'place_bid',
-                auction_id: document.getElementById('auctionId').value,
                 amount: parseFloat(document.getElementById('bidAmount').value)
             });
         }
@@ -388,7 +431,6 @@
             div.className = 'message ' + type;
             div.textContent = new Date().toLocaleTimeString() + ' - ' + text;
             document.getElementById('messages').appendChild(div);
-            div.scrollIntoView({ behavior: 'smooth' });
         }
         
         function addRawMessage(text, type = 'info') {
@@ -396,7 +438,6 @@
             div.className = 'message ' + type;
             div.textContent = new Date().toLocaleTimeString() + ' - ' + text;
             document.getElementById('rawMessages').appendChild(div);
-            div.scrollIntoView({ behavior: 'smooth' });
         }
         
         function clearMessages() {

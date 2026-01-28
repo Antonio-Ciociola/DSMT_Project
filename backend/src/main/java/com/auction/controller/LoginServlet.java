@@ -65,12 +65,9 @@ public class LoginServlet extends HttpServlet {
                 session.setAttribute("userId", user.getId());
                 session.setAttribute("loginTime", System.currentTimeMillis());
                 
-                // Generate JWT token for Erlang and API calls
-                String jwtToken = JwtUtil.generateToken(user.getId(), user.getUsername());
-                session.setAttribute("jwtToken", jwtToken);
+                // JWT tokens are now generated when user joins specific auctions
+                // (tokens are auction-specific and include balance)
                 
-                // Make JWT available to JSP so client can store it
-                request.setAttribute("jwtToken", jwtToken);
                 request.setAttribute("username", user.getUsername());
                 request.getRequestDispatcher("/login-success.jsp").forward(request, response);
                 return;

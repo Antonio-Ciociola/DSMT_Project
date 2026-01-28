@@ -145,7 +145,7 @@
             <div class="user-info">
                 <span>Welcome, <strong><%= username %></strong></span>
                 <% if ("Guest".equals(username)) { %>
-                    <a href="${pageContext.request.contextPath}/login.jsp" class="logout-btn">Login</a>
+                    <a href="${pageContext.request.contextPath}/login" class="logout-btn">Login</a>
                 <% } else { %>
                     <a href="${pageContext.request.contextPath}/logout" class="logout-btn">Logout</a>
                 <% } %>
@@ -170,7 +170,7 @@
             </a>
             
             <% if ("Guest".equals(username)) { %>
-                <a href="${pageContext.request.contextPath}/login.jsp" class="feature-card">
+                <a href="${pageContext.request.contextPath}/login" class="feature-card">
             <% } else { %>
                 <a href="${pageContext.request.contextPath}/create-auction" class="feature-card">
             <% } %>
@@ -180,7 +180,7 @@
             </a>
             
             <% if ("Guest".equals(username)) { %>
-                <a href="${pageContext.request.contextPath}/login.jsp" class="feature-card">
+                <a href="${pageContext.request.contextPath}/login" class="feature-card">
             <% } else { %>
                 <a href="${pageContext.request.contextPath}/delete-auction" class="feature-card">
             <% } %>
@@ -190,7 +190,7 @@
             </a>
             
             <% if ("Guest".equals(username)) { %>
-                <a href="${pageContext.request.contextPath}/login.jsp" class="feature-card">
+                <a href="${pageContext.request.contextPath}/login" class="feature-card">
             <% } else { %>
                 <a href="${pageContext.request.contextPath}/balance" class="feature-card">
             <% } %>

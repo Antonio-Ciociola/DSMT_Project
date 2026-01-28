@@ -10,11 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
-import java.io.OutputStream;
 import java.math.BigDecimal;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.Optional;
 
@@ -31,30 +27,26 @@ public class JoinAuctionServlet extends HttpServlet {
     protected void doPost(HttpServletRequest request, HttpServletResponse response) 
             throws ServletException, IOException {
         
+        // Set JSON content type for all responses
+        response.setContentType("application/json");
+        
         // Get session and user info
         HttpSession session = request.getSession(false);
-        if (session == null) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
-            response.getWriter().write("{\"error\": \"Not logged in\"}");
-            return;
-        }
+        boolean isGuest = (session == null);
         
-        Integer userId = (Integer) session.getAttribute("userId");
-        String username = (String) session.getAttribute("username");
+        Integer userId = null;
+        String username = null;
         
-        if (userId == null || username == null) {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.setContentType("application/json");
-            response.getWriter().write("{\"error\": \"Not logged in\"}");
-            return;
+        if (!isGuest) {
+            userId = (Integer) session.getAttribute("userId");
+            username = (String) session.getAttribute("username");
+            isGuest = (userId == null || username == null);
         }
         
         // Get auction ID from request
         String auctionIdStr = request.getParameter("auctionId");
         if (auctionIdStr == null || auctionIdStr.trim().isEmpty()) {
             response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-            response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Auction ID is required\"}");
             return;
         }
@@ -71,7 +63,6 @@ public class JoinAuctionServlet extends HttpServlet {
                 auctionId = Integer.parseInt(auctionIdStr);
             } catch (NumberFormatException e) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.setContentType("application/json");
                 response.getWriter().write("{\"error\": \"Invalid auction ID format\"}");
                 return;
             }
@@ -80,7 +71,6 @@ public class JoinAuctionServlet extends HttpServlet {
             Optional<Auction> auctionOpt = auctionService.getAuctionById(auctionId);
             if (!auctionOpt.isPresent()) {
                 response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.setContentType("application/json");
                 response.getWriter().write("{\"error\": \"Auction not found\"}");
                 return;
             }
@@ -88,10 +78,16 @@ public class JoinAuctionServlet extends HttpServlet {
             Auction auction = auctionOpt.get();
             String auctionStatus = auction.getStatus();
             
+            // Check if user owns this auction - if so, force guest mode
+            if (!isGuest && userId != null && auction.getUserId() == userId) {
+                System.out.println("User " + userId + " owns auction " + auctionId + " - joining as guest (view-only)");
+                isGuest = true;
+                username = "guest_owner_" + userId;
+            }
+            
             // Only allow joining if auction is ongoing
             if (!"ongoing".equalsIgnoreCase(auctionStatus)) {
                 response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
-                response.setContentType("application/json");
                 response.getWriter().write(
                     "{\"error\": \"Cannot join auction\", " +
                     "\"reason\": \"Auction is not ongoing\", " +
@@ -102,68 +98,65 @@ public class JoinAuctionServlet extends HttpServlet {
             
             System.out.println("Auction status: " + auctionStatus + " - OK to join");
             
-            // Get user balance from MySQL
-            BigDecimal balance = userService.getBalance(userId);
-            System.out.println("User balance: " + balance);
-            
-            // Prepare JSON payload for Erlang endpoint
-            String jsonPayload = String.format(
-                "{\"userid\": \"%s\", \"auction_id\": \"%s\", \"balance\": %s}",
-                userId, auctionIdStr, balance.toString()
-            );
-            
-            System.out.println("Sending to Erlang: " + jsonPayload);
-            
-            // POST to Erlang endpoint
-            String erlangUrl = "http://erlang:8081/erlangapi/user";
-            URL url = new URL(erlangUrl);
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setRequestMethod("POST");
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setDoOutput(true);
-            
-            // Send request
-            try (OutputStream os = conn.getOutputStream()) {
-                byte[] input = jsonPayload.getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
-            }
-            
-            // Get response from Erlang
-            int erlangResponseCode = conn.getResponseCode();
-            System.out.println("Erlang response code: " + erlangResponseCode);
-            
-            if (erlangResponseCode == HttpURLConnection.HTTP_OK || 
-                erlangResponseCode == HttpURLConnection.HTTP_CREATED) {
-                // Success
-                response.setContentType("application/json");
-                response.getWriter().write(
-                    "{\"success\": true, \"message\": \"Successfully joined auction\", " +
-                    "\"auctionId\": \"" + auctionIdStr + "\", " +
-                    "\"userId\": \"" + userId + "\", " +
-                    "\"balance\": " + balance.toString() + "}"
-                );
+            // Get user balance from MySQL (only if not guest)
+            BigDecimal balance = BigDecimal.ZERO;
+            if (!isGuest) {
+                balance = userService.getBalance(userId);
+                System.out.println("User balance: " + balance);
+                
+                // Handle null balance
+                if (balance == null) {
+                    System.err.println("Balance is null for user " + userId + ", defaulting to 0");
+                    balance = BigDecimal.ZERO;
+                }
             } else {
-                // Erlang returned error
-                response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-                response.setContentType("application/json");
-                response.getWriter().write(
-                    "{\"error\": \"Failed to register with auction system\", " +
-                    "\"erlangStatus\": " + erlangResponseCode + "}"
-                );
+                System.out.println("Guest user - balance set to 0");
             }
+            
+            // Generate JWT token with auction-specific info
+            String jwtToken = com.auction.util.JwtUtil.generateToken(
+                username != null ? username : "guest", 
+                auctionIdStr,
+                balance.doubleValue(),
+                isGuest
+            );
+            System.out.println("Generated JWT for auction join: " + jwtToken.substring(0, 20) + "...");
+            
+            // Store JWT in session
+            session.setAttribute("jwtToken", jwtToken);
+            session.setAttribute("currentAuctionId", auctionIdStr);
+            
+            // Get WebSocket URL from database (saved when auction started)
+            String websocketUrl = auction.getWebsocketUrl();
+            
+            if (websocketUrl == null || websocketUrl.trim().isEmpty()) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().write("{\"error\": \"Auction WebSocket not available. Please wait for auction to start.\"}");
+                return;
+            }
+            
+            System.out.println("WebSocket URL: " + websocketUrl);
+            
+            // Return success with JWT and WebSocket URL
+            response.getWriter().write(
+                "{\"success\": true, \"message\": \"Successfully joined auction\", " +
+                "\"auctionId\": \"" + auctionIdStr + "\", " +
+                "\"userId\": \"" + userId + "\", " +
+                "\"balance\": " + balance.toString() + ", " +
+                "\"jwtToken\": \"" + jwtToken + "\", " +
+                "\"websocketUrl\": \"" + websocketUrl + "\"}"
+            );
             
         } catch (SQLException e) {
             System.err.println("Database error: " + e.getMessage());
             e.printStackTrace();
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"Database error: " + e.getMessage() + "\"}");
         } catch (Exception e) {
-            System.err.println("Error calling Erlang: " + e.getMessage());
+            System.err.println("Error generating JWT: " + e.getMessage());
             e.printStackTrace();
             response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
-            response.setContentType("application/json");
-            response.getWriter().write("{\"error\": \"Error connecting to auction system: " + e.getMessage() + "\"}");
+            response.getWriter().write("{\"error\": \"Error joining auction: " + e.getMessage() + "\"}");
         }
     }
 }

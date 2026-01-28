@@ -79,6 +79,42 @@ public class ValidationUtils {
     }
 
     /**
+     * Validates and parses a non-negative integer value (>= 0).
+     * @param value the string to parse
+     * @param fieldName the name of the field (for error messages)
+     * @return the parsed integer, or throws exception with error message
+     */
+    public static int validateNonNegativeInteger(String value, String fieldName) throws ValidationException {
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            if (parsed < 0) {
+                throw new ValidationException(fieldName + " cannot be negative.");
+            }
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new ValidationException("Invalid " + fieldName + ".");
+        }
+    }
+
+    /**
+     * Validates and parses a non-negative double value (>= 0).
+     * @param value the string to parse
+     * @param fieldName the name of the field (for error messages)
+     * @return the parsed double, or throws exception with error message
+     */
+    public static double validateNonNegativeDouble(String value, String fieldName) throws ValidationException {
+        try {
+            double parsed = Double.parseDouble(value.trim());
+            if (parsed < 0) {
+                throw new ValidationException(fieldName + " cannot be negative.");
+            }
+            return parsed;
+        } catch (NumberFormatException e) {
+            throw new ValidationException("Invalid " + fieldName + " format.");
+        }
+    }
+
+    /**
      * Validates and parses a positive BigDecimal value (>= 0).
      * @param value the string to parse
      * @param fieldName the name of the field (for error messages)

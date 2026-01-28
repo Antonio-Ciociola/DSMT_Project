@@ -8,31 +8,35 @@
 -module(http_server).
 -author("auction_system").
 
--export([start/0, start/1, stop/0]).
+-export([start/0, start/1, start_master/1, start_slave/1, stop/0]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-%% @doc Start the HTTP server on default port 8081
+%% @doc Start the HTTP server on default port 8081 (auto-detect role)
 start() ->
     start(8081).
 
-%% @doc Start the HTTP server with WebSocket support on custom port
+%% @doc Start the HTTP server with role detection
 start(Port) ->
-    io:format("[HTTP] Starting HTTP server on port ~p~n", [Port]),
+    Role = application:get_env(auction_app, node_role, master),
+    case Role of
+        master -> start_master(Port);
+        slave -> start_slave(Port)
+    end.
+
+%% @doc Start master node - handles POST endpoints only
+start_master(Port) ->
+    io:format("[HTTP] Starting MASTER node on port ~p~n", [Port]),
     
-    %% Define routes
+    %% Master routes: POST endpoints only
     Dispatch = cowboy_router:compile([
         {'_', [
-            %% WebSocket endpoint
-            {"/ws", ws_handler, []},
-            
-            %% POST endpoints for external system
+            %% POST endpoint for auction creation
             {"/erlangapi/auction", auction_post_handler, []},
-            {"/erlangapi/user", user_post_handler, []},
             
-            %% Static health check
+            %% Health check
             {"/health", health_handler, []},
             
             %% Catch all - 404
@@ -40,6 +44,30 @@ start(Port) ->
         ]}
     ]),
     
+    start_cowboy_listener(Port, Dispatch).
+
+%% @doc Start slave node - handles WebSocket endpoints only
+start_slave(Port) ->
+    io:format("[HTTP] Starting SLAVE node on port ~p~n", [Port]),
+    
+    %% Slave routes: WebSocket only
+    Dispatch = cowboy_router:compile([
+        {'_', [
+            %% WebSocket endpoint
+            {"/ws", ws_handler, []},
+            
+            %% Health check
+            {"/health", health_handler, []},
+            
+            %% Catch all - 404
+            {'_', not_found_handler, []}
+        ]}
+    ]),
+    
+    start_cowboy_listener(Port, Dispatch).
+
+%% @doc Internal function to start Cowboy listener
+start_cowboy_listener(Port, Dispatch) ->
     %% Start Cowboy HTTP listener with unique name per port
     ListenerName = list_to_atom("http_listener_" ++ integer_to_list(Port)),
     {ok, _} = cowboy:start_clear(
@@ -47,13 +75,14 @@ start(Port) ->
         [{port, Port}],
         #{
             env => #{dispatch => Dispatch},
-            idle_timeout => infinity,  % WebSocket idle timeout (infinity = never timeout)
-            request_timeout => 600000   % HTTP request timeout (10 minutes)
+            idle_timeout => infinity,       % WebSocket idle timeout (infinity = never timeout)
+            request_timeout => 600000,      % HTTP request timeout (10 minutes)
+            max_keepalive => infinity,      % Maximum number of keepalive requests
+            inactivity_timeout => infinity  % Connection inactivity timeout
         }
     ),
     
-    io:format("[HTTP] Server started successfully on http://localhost:~p~n", [Port]),
-    io:format("[HTTP] WebSocket endpoint: ws://localhost:~p/ws~n", [Port]),
+    io:format("[HTTP] Server started successfully on port ~p~n", [Port]),
     ok.
 
 %% @doc Stop the HTTP server

@@ -26,18 +26,21 @@ public class JwtUtil {
     private static final Key key = Keys.hmacShaKeyFor(SECRET_KEY.getBytes());
 
     /**
-     * Generates a JWT token for a user.
-     * @param userId   the user ID to embed in the token
-     * @param username the username to embed in the token
+     * Generates a JWT token for a user participating in an auction.
+     * @param username  the username to embed in the token
+     * @param auctionId the auction ID the user is joining
+     * @param balance   the user's balance for this auction
      * @return JWT token as String
      */
-    public static String generateToken(int userId, String username) {
+    public static String generateToken(String username, String auctionId, double balance, boolean isGuest) {
         Date now = new Date();
         Date expiration = new Date(now.getTime() + EXPIRATION_TIME);
 
         return Jwts.builder()
-                .subject(username)
-                .claim("userId", userId)
+                .subject(username != null ? username : "guest")
+                .claim("auctionId", auctionId)
+                .claim("balance", balance)
+                .claim("guest", isGuest)
                 .issuedAt(now)
                 .expiration(expiration)
             // JJWT 0.12+: algorithm inferred from key type; key is HMAC so HS256 is chosen

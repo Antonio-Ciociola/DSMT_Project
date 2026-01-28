@@ -47,7 +47,7 @@ public class AuctionService {
     }
 
     // Finish an auction: update status, transfer balance from winner to seller
-    public void finishAuction(int auctionId, int winnerUserId, double finalPrice) throws SQLException {
+    public void finishAuction(int auctionId, String winnerUsername, double finalPrice, int totalDuration) throws SQLException {
         
         // Get auction to find the seller
         Optional<Auction> auctionOpt = auctionDao.findById(auctionId);
@@ -58,11 +58,23 @@ public class AuctionService {
         Auction auction = auctionOpt.get();
         int sellerId = auction.getUserId();
         
+        // Look up winner's user ID from username
+        int winnerUserId = userDao.getUserIdByUsername(winnerUsername);
+        if (winnerUserId == 0) {
+            throw new SQLException("Winner user not found: " + winnerUsername);
+        }
+        
         // Update auction status and winner info
-        auctionDao.finishAuction(auctionId, winnerUserId, finalPrice);
+        auctionDao.finishAuction(auctionId, winnerUserId, finalPrice, totalDuration);
         
         // Transfer balance from winner to seller
         BigDecimal amount = BigDecimal.valueOf(finalPrice);
         userDao.transferBalance(winnerUserId, sellerId, amount);
+    }
+    
+    // Finish an auction with no winner (no bids received)
+    public void finishAuctionWithNoWinner(int auctionId, int totalDuration) throws SQLException {
+        // Update auction status to finished with no winner
+        auctionDao.finishAuctionWithNoWinner(auctionId, totalDuration);
     }
 }

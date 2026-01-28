@@ -46,25 +46,26 @@ handle_post(Req0, State) ->
         io:format("[POST] Received auction: ~p, price: ~p, duration: ~p, min_inc: ~p, time_inc: ~p~n", 
                   [AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeIncrementBid]),
         
-        %% Store auction in system
-        case server:register_auction(
-            binary_to_list(AuctionId),
-            StartingPrice,
-            MinDuration,
-            MinIncrementBid,
-            TimeIncrementBid
-        ) of
-            ok ->
+        %% Assign auction to least loaded slave (slave will create it in Mnesia)
+        AuctionIdStr = binary_to_list(AuctionId),
+        case slave_manager:assign_auction_to_slave(AuctionIdStr, StartingPrice, MinDuration, 
+                                                   MinIncrementBid, TimeIncrementBid) of
+            {ok, {SlaveNode, SlavePort, WsUrl}} ->
+                io:format("[POST] Auction ~p assigned to ~p (port ~p)~n", 
+                         [AuctionId, SlaveNode, SlavePort]),
                 Req = cowboy_req:reply(200, #{
                     <<"content-type">> => <<"application/json">>,
                     <<"access-control-allow-origin">> => <<"*">>
                 }, jsx:encode(#{
                     success => true,
-                    auction_id => AuctionId
+                    auction_id => AuctionId,
+                    websocket_url => list_to_binary(WsUrl),
+                    slave_node => list_to_binary(atom_to_list(SlaveNode)),
+                    slave_port => SlavePort
                 }), Req1),
                 {ok, Req, State};
             {error, Reason} ->
-                Req = cowboy_req:reply(400, #{
+                Req = cowboy_req:reply(500, #{
                     <<"content-type">> => <<"application/json">>,
                     <<"access-control-allow-origin">> => <<"*">>
                 }, jsx:encode(#{
@@ -86,6 +87,8 @@ handle_post(Req0, State) ->
             {ok, Req2, State}
     end.
 
+format_error(no_slaves_available) ->
+    <<"No slave nodes available to handle auction">>;
 format_error(Reason) when is_atom(Reason) ->
     list_to_binary(atom_to_list(Reason));
 format_error(Reason) when is_list(Reason) ->

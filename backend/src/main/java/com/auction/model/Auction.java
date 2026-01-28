@@ -16,7 +16,9 @@ public class Auction {
     private String winnerUsername;
     private Double finalPrice;
     private int startingDuration;
+    private int totalDuration;
     private int bidTimeIncrement;
+    private String websocketUrl;
 
     public int getId() {
         return id;
@@ -122,11 +124,27 @@ public class Auction {
         this.startingDuration = startingDuration;
     }
 
+    public int getTotalDuration() {
+        return totalDuration;
+    }
+
+    public void setTotalDuration(int totalDuration) {
+        this.totalDuration = totalDuration;
+    }
+
     public int getBidTimeIncrement() {
         return bidTimeIncrement;
     }
 
     public void setBidTimeIncrement(int bidTimeIncrement) {
         this.bidTimeIncrement = bidTimeIncrement;
+    }
+
+    public String getWebsocketUrl() {
+        return websocketUrl;
+    }
+
+    public void setWebsocketUrl(String websocketUrl) {
+        this.websocketUrl = websocketUrl;
     }
 }

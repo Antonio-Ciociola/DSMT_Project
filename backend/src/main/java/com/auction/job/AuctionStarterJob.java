@@ -17,7 +17,7 @@ import java.util.Optional;
 // Job class to start an auction by updating its status
 public class AuctionStarterJob implements Job {
     
-    private static final String ERLANG_API_URL = "http://erlang:8081/erlangapi/auction";
+    private static final String ERLANG_API_URL = "http://erlang-master:8081/erlangapi/auction";
     
     /**
      * Execute the job to start the auction.
@@ -44,8 +44,14 @@ public class AuctionStarterJob implements Job {
             // Update the auction status to "ongoing"
             auctionDao.updateAuctionStatus(auctionId, "ongoing");
 
-            // Send auction details to Erlang API
-            postAuctionToErlang(auction);
+            // Send auction details to Erlang API and get WebSocket URL
+            String websocketUrl = postAuctionToErlang(auction);
+            
+            // Save WebSocket URL to database
+            if (websocketUrl != null) {
+                auctionDao.updateWebsocketUrl(auctionId, websocketUrl);
+                System.out.println("Saved WebSocket URL for auction " + auctionId + ": " + websocketUrl);
+            }
             
             System.out.println("Auction " + auctionId + " started successfully at " + System.currentTimeMillis());
         } 
@@ -64,9 +70,10 @@ public class AuctionStarterJob implements Job {
     /**
      * Send auction details to the Erlang API endpoint
      * @param auction The auction to send
+     * @return The WebSocket URL returned by Erlang, or null if failed
      * @throws IOException If there is an error during the HTTP request
      */
-    private void postAuctionToErlang(Auction auction) throws IOException {
+    private String postAuctionToErlang(Auction auction) throws IOException {
         URL url = new URL(ERLANG_API_URL);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         
@@ -77,7 +84,7 @@ public class AuctionStarterJob implements Job {
             
             // Build JSON payload with required fields
             String jsonPayload = String.format(
-                "{\"id\":\"auction_%d\",\"starting_price\":%.2f,\"min_duration\":%d,\"min_increment_bid\":%.2f,\"time_increment_bid\":%d}",
+                "{\"id\":\"%d\",\"starting_price\":%.2f,\"min_duration\":%d,\"min_increment_bid\":%.2f,\"time_increment_bid\":%d}",
                 auction.getId(),
                 auction.getStartingPrice(),
                 auction.getStartingDuration(),
@@ -94,10 +101,32 @@ public class AuctionStarterJob implements Job {
             // Check response code
             int responseCode = conn.getResponseCode();
             if (responseCode == HttpURLConnection.HTTP_OK) {
-                System.out.println("Successfully registered auction " + auction.getId() + " with Erlang system");
+                // Read response to extract WebSocket URL
+                try (java.io.BufferedReader br = new java.io.BufferedReader(
+                        new java.io.InputStreamReader(conn.getInputStream(), "utf-8"))) {
+                    StringBuilder response = new StringBuilder();
+                    String responseLine;
+                    while ((responseLine = br.readLine()) != null) {
+                        response.append(responseLine.trim());
+                    }
+                    
+                    String responseStr = response.toString();
+                    System.out.println("Erlang response: " + responseStr);
+                    
+                    // Extract websocket_url from JSON response
+                    int wsUrlStart = responseStr.indexOf("\"websocket_url\":\"") + 17;
+                    int wsUrlEnd = responseStr.indexOf("\"", wsUrlStart);
+                    
+                    if (wsUrlStart > 16 && wsUrlEnd > wsUrlStart) {
+                        String websocketUrl = responseStr.substring(wsUrlStart, wsUrlEnd);
+                        System.out.println("Successfully registered auction " + auction.getId() + " with WebSocket URL: " + websocketUrl);
+                        return websocketUrl;
+                    }
+                }
             } else {
                 System.err.println("Failed to register auction with Erlang system. Response code: " + responseCode);
             }
+            return null;
         }catch (Exception e){
             throw new IOException("Error during HTTP request to Erlang API", e);
         } 

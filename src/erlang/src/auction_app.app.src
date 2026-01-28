@@ -9,7 +9,8 @@
         mnesia,
         cowboy,
         jsx,
-        jose
+        jose,
+        inets
     ]},
     {env, [
         {http_port, 8081}

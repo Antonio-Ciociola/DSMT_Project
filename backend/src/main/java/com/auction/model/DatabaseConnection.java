@@ -20,15 +20,39 @@ public class DatabaseConnection {
             throw new ExceptionInInitializerError("Failed to load MySQL JDBC Driver: " + e.getMessage());
         }
         
+        // Get environment variables with defaults for local development
+        String dbUrl = System.getenv("DB_URL");
+        String dbUser = System.getenv("DB_USER");
+        String dbPassword = System.getenv("DB_PASSWORD");
+        
+        System.out.println("DatabaseConnection initializing...");
+        System.out.println("DB_URL: " + dbUrl);
+        System.out.println("DB_USER: " + dbUser);
+        System.out.println("DB_PASSWORD: " + (dbPassword != null ? "***" : "null"));
+        
+        if (dbUrl == null || dbUser == null || dbPassword == null) {
+            throw new ExceptionInInitializerError(
+                "Database configuration missing. Required: DB_URL, DB_USER, DB_PASSWORD"
+            );
+        }
+        
         HikariConfig config = new HikariConfig();
-        config.setJdbcUrl(System.getenv("DB_URL"));
-        config.setUsername(System.getenv("DB_USER"));
-        config.setPassword(System.getenv("DB_PASSWORD"));
+        config.setJdbcUrl(dbUrl);
+        config.setUsername(dbUser);
+        config.setPassword(dbPassword);
         config.setMaximumPoolSize(10);
         config.setMinimumIdle(5);
         config.setConnectionTimeout(20000);
         config.setIdleTimeout(300000);
-        dataSource = new HikariDataSource(config);
+        
+        try {
+            dataSource = new HikariDataSource(config);
+            System.out.println("DatabaseConnection initialized successfully");
+        } catch (Exception e) {
+            System.err.println("Failed to initialize HikariCP: " + e.getMessage());
+            e.printStackTrace();
+            throw new ExceptionInInitializerError(e);
+        }
     }
 
     /**

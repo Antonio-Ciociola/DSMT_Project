@@ -20,7 +20,7 @@ public class AuctionDao {
         // SQL query to join auctions with users to get owner and winner usernames
         String sql = "SELECT a.id, a.user_id, a.title, a.description, a.starting_price, a.min_bid_increment, " +
                      "a.start_date, a.status, a.winner_user_id, a.final_price, " +
-                     "a.starting_duration, a.bid_time_increment, u.username as owner_username, " +
+                     "a.starting_duration, a.total_duration, a.bid_time_increment, a.websocket_url, u.username as owner_username, " +
                      "w.username as winner_username " +
                      "FROM auctions a " +
                      "JOIN users u ON a.user_id = u.id " +
@@ -50,7 +50,7 @@ public class AuctionDao {
         // SQL query to get auctions for a user that haven't started yet
         String sql = "SELECT id, user_id, title, description, starting_price, min_bid_increment, " +
                      "start_date, status, winner_user_id, final_price, " +
-                     "starting_duration, bid_time_increment FROM auctions " +
+                     "starting_duration, bid_time_increment, total_duration, websocket_url FROM auctions " +
                      "WHERE user_id = ? AND start_date > NOW() ORDER BY start_date ASC";
         
         // Getting DB connection, preparing the statement with userId, 
@@ -147,7 +147,7 @@ public class AuctionDao {
         
         // SQL query to get auction details by ID
         String sql = "SELECT id, user_id, title, description, starting_price, min_bid_increment, " +
-                     "start_date, status, winner_user_id, final_price, starting_duration, bid_time_increment " +
+                     "start_date, status, winner_user_id, final_price, starting_duration, bid_time_increment, websocket_url " +
                      "FROM auctions WHERE id = ?";
 
         // Getting DB connection, preparing the statement with auctionId, 
@@ -169,20 +169,65 @@ public class AuctionDao {
     }
 
     // Finish an auction by setting status, winner, and final price
-    public void finishAuction(int auctionId, int winnerUserId, double finalPrice) throws SQLException {
+    public void finishAuction(int auctionId, int winnerUserId, double finalPrice, int totalDuration) throws SQLException {
         
-        // SQL update statement to finalize the auction
-        String sql = "UPDATE auctions SET status = ?, winner_user_id = ?, final_price = ? WHERE id = ?";
+        System.out.format("[DAO] finishAuction called - auctionId: %d, totalDuration: %d%n", auctionId, totalDuration);
         
-        try (
-            Connection conn = DatabaseConnection.getConnection();
-            PreparedStatement pstmt = conn.prepareStatement(sql)
-        ) {
-            pstmt.setString(1, "finished");
-            pstmt.setInt(2, winnerUserId);
-            pstmt.setDouble(3, finalPrice);
-            pstmt.setInt(4, auctionId);
-            pstmt.executeUpdate();
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            // Try to update with total_duration first
+            String sql = "UPDATE auctions SET status = ?, winner_user_id = ?, final_price = ?, total_duration = ? WHERE id = ?";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, "finished");
+                pstmt.setInt(2, winnerUserId);
+                pstmt.setDouble(3, finalPrice);
+                pstmt.setInt(4, totalDuration);
+                pstmt.setInt(5, auctionId);
+                pstmt.executeUpdate();
+                System.out.format("[DAO] Successfully updated auction %d with total_duration = %d%n", auctionId, totalDuration);
+            } catch (SQLException e) {
+                System.out.format("[DAO] Failed to update with total_duration, error: %s%n", e.getMessage());
+                // If total_duration column doesn't exist, try without it
+                if (e.getMessage().contains("total_duration")) {
+                    String fallbackSql = "UPDATE auctions SET status = ?, winner_user_id = ?, final_price = ? WHERE id = ?";
+                    try (PreparedStatement pstmt = conn.prepareStatement(fallbackSql)) {
+                        pstmt.setString(1, "finished");
+                        pstmt.setInt(2, winnerUserId);
+                        pstmt.setDouble(3, finalPrice);
+                        pstmt.setInt(4, auctionId);
+                        pstmt.executeUpdate();
+                    }
+                } else {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    public void finishAuctionWithNoWinner(int auctionId, int totalDuration) throws SQLException {
+        
+        try (Connection conn = DatabaseConnection.getConnection()) {
+            // Try to update with total_duration first
+            String sql = "UPDATE auctions SET status = ?, winner_user_id = NULL, final_price = NULL, total_duration = ? WHERE id = ?";
+            
+            try (PreparedStatement pstmt = conn.prepareStatement(sql)) {
+                pstmt.setString(1, "finished");
+                pstmt.setInt(2, totalDuration);
+                pstmt.setInt(3, auctionId);
+                pstmt.executeUpdate();
+            } catch (SQLException e) {
+                // If total_duration column doesn't exist, try without it
+                if (e.getMessage().contains("total_duration")) {
+                    String fallbackSql = "UPDATE auctions SET status = ?, winner_user_id = NULL, final_price = NULL WHERE id = ?";
+                    try (PreparedStatement pstmt = conn.prepareStatement(fallbackSql)) {
+                        pstmt.setString(1, "finished");
+                        pstmt.setInt(2, auctionId);
+                        pstmt.executeUpdate();
+                    }
+                } else {
+                    throw e;
+                }
+            }
         }
     }
 
@@ -199,7 +244,40 @@ public class AuctionDao {
         auction.setStartDate(ts != null ? ts.toLocalDateTime() : null);
         auction.setStatus(rs.getString("status"));
         auction.setStartingDuration(rs.getInt("starting_duration"));
+        
+        // Handle total_duration - may not exist in older database schemas
+        try {
+            int totalDuration = rs.getInt("total_duration");
+            boolean wasNull = rs.wasNull();
+            int auctionId = rs.getInt("id");
+            System.out.format("[DAO] Read total_duration for auction %d: value=%d, wasNull=%b%n", 
+                             auctionId, totalDuration, wasNull);
+            
+            if (!wasNull && totalDuration > 0) {
+                auction.setTotalDuration(totalDuration);
+                System.out.format("[DAO] Set totalDuration to %d for auction %d%n", totalDuration, auctionId);
+            } else {
+                // NULL or 0, use starting_duration as fallback
+                int fallback = rs.getInt("starting_duration");
+                auction.setTotalDuration(fallback);
+                System.out.format("[DAO] Using starting_duration fallback (%d) for auction %d%n", fallback, auctionId);
+            }
+        } catch (SQLException e) {
+            // Column doesn't exist, use starting_duration as fallback
+            int fallback = rs.getInt("starting_duration");
+            auction.setTotalDuration(fallback);
+            System.out.format("[DAO] total_duration column doesn't exist, using fallback (%d)%n", fallback);
+        }
+        
         auction.setBidTimeIncrement(rs.getInt("bid_time_increment"));
+        
+        // Handle websocket_url with try-catch in case column doesn't exist
+        try {
+            auction.setWebsocketUrl(rs.getString("websocket_url"));
+        } catch (SQLException e) {
+            // Column doesn't exist or is null, set null
+            auction.setWebsocketUrl(null);
+        }
         
         // Handle nullable winner fields
         int winnerUserId = rs.getInt("winner_user_id");
@@ -227,6 +305,24 @@ public class AuctionDao {
             PreparedStatement pstmt = conn.prepareStatement(sql)
         ) {
             pstmt.setString(1, status);
+            pstmt.setInt(2, auctionId);
+            
+            int rowsUpdated = pstmt.executeUpdate();
+            if (rowsUpdated == 0) {
+                throw new SQLException("Auction not found with id: " + auctionId);
+            }
+        }
+    }
+
+    // Update auction WebSocket URL
+    public void updateWebsocketUrl(int auctionId, String websocketUrl) throws SQLException {
+        String sql = "UPDATE auctions SET websocket_url = ? WHERE id = ?";
+        
+        try (
+            Connection conn = DatabaseConnection.getConnection();
+            PreparedStatement pstmt = conn.prepareStatement(sql)
+        ) {
+            pstmt.setString(1, websocketUrl);
             pstmt.setInt(2, auctionId);
             
             int rowsUpdated = pstmt.executeUpdate();

@@ -35,6 +35,12 @@ public class UserDao {
         }
     }
 
+    // Get user ID by username (returns 0 if not found)
+    public int getUserIdByUsername(String username) throws SQLException {
+        Optional<User> userOpt = findByUsername(username);
+        return userOpt.map(User::getId).orElse(0);
+    }
+
     // Fetch a user by their ID
     public Optional<User> findById(int userId) throws SQLException {
 

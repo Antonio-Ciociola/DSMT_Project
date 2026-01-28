@@ -41,21 +41,86 @@ services:
       timeout: 5s
       retries: 5
 
-  ### Erlang Backend
-  erlang:
+  ### Erlang Master Node (POST endpoints)
+  erlang-master:
 
     ### Build configuration for the Erlang service
     build:
       context: ../src/erlang
       dockerfile: Dockerfile
-    container_name: auction-erlang
+    container_name: auction-erlang-master
+    hostname: erlang-master
     
-    ### Port mapping to expose the Erlang HTTP/WebSocket service on port 8081
+    ### Port mapping to expose the Erlang POST API on port 8081
     ports:
       - "8081:8081"
     
-    ### Service dependencies
-    # The Erlang service can start independently
+    ### Environment to configure as master
+    environment:
+      NODE_NAME: auction
+      NODE_ROLE: master
+      HTTP_PORT: 8081
+    
+    volumes:
+      - erlang_master_data:/app/Mnesia.auction@erlang-master
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    
+    restart: unless-stopped
+
+  ### Erlang Slave Node 1 (WebSocket)
+  erlang-slave1:
+
+    build:
+      context: ../src/erlang
+      dockerfile: Dockerfile
+    container_name: auction-erlang-slave1
+    hostname: erlang-slave1
+    
+    ### Port mapping for WebSocket on port 8082
+    ports:
+      - "8082:8082"
+    
+    environment:
+      NODE_NAME: auction_slave1
+      NODE_ROLE: slave
+      HTTP_PORT: 8082
+      MASTER_NODE: auction@erlang-master
+    
+    depends_on:
+      erlang-master:
+        condition: service_healthy
+    
+    restart: unless-stopped
+
+  ### Erlang Slave Node 2 (WebSocket)
+  erlang-slave2:
+
+    build:
+      context: ../src/erlang
+      dockerfile: Dockerfile
+    container_name: auction-erlang-slave2
+    hostname: erlang-slave2
+    
+    ### Port mapping for WebSocket on port 8083
+    ports:
+      - "8083:8083"
+    
+    environment:
+      NODE_NAME: auction_slave2
+      NODE_ROLE: slave
+      HTTP_PORT: 8083
+      MASTER_NODE: auction@erlang-master
+    
+    depends_on:
+      erlang-master:
+        condition: service_healthy
+    
     restart: unless-stopped
 
   ### Java Backend
@@ -84,7 +149,7 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/auction_system
       DB_USER: auction_user
       DB_PASSWORD: auction_password
-      JWT_SECRET: mi-hanno-detto-che-ad-antonio-ciociola-puzzano-i-piedi # Secret key for JWT signing (should be more secure in production)
+      JWT_SECRET: DSMT_PROJECT_SECRETKEY_MINIMUM_48_BYTES_FOR_HS384 # Secret key for JWT signing (must be >= 48 bytes for HS384)
 
     ### Service dependencies
     # Ensures that the backend service starts only after the MySQL service is healthy (i.e. 
@@ -96,3 +161,4 @@ services:
 ### Define named volumes for data persistence
 volumes:
   mysql_data: # Persists MySQL data across container restarts
+  erlang_master_data: # Persists Erlang master Mnesia data

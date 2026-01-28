@@ -252,6 +252,161 @@
             font-size: 16px;
             opacity: 0.9;
         }
+        
+        /* Auction End Overlay Styles */
+        .auction-end-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 9999;
+            overflow-y: auto;
+        }
+        
+        .auction-end-content {
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 40px;
+            color: white;
+            text-align: center;
+        }
+        
+        .end-icon {
+            font-size: 120px;
+            margin-bottom: 30px;
+            animation: bounceIn 0.8s;
+        }
+        
+        .end-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            animation: fadeInUp 0.6s;
+        }
+        
+        .end-subtitle {
+            font-size: 24px;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            animation: fadeInUp 0.8s;
+        }
+        
+        .winner-card {
+            background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
+            padding: 40px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            animation: scaleIn 0.5s;
+        }
+        
+        .loser-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            animation: scaleIn 0.5s;
+        }
+        
+        .no-winner-card {
+            background: linear-gradient(135deg, #868f96 0%, #596164 100%);
+            padding: 40px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            animation: scaleIn 0.5s;
+        }
+        
+        .winner-card .card-title,
+        .loser-card .card-title,
+        .no-winner-card .card-title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+        
+        .winner-card .winning-amount {
+            font-size: 64px;
+            font-weight: 900;
+            margin: 20px 0;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
+            animation: fadeInUp 1s;
+        }
+        
+        .stat-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .end-actions {
+            margin-top: 40px;
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            animation: fadeInUp 1.2s;
+        }
+        
+        .end-button {
+            padding: 15px 40px;
+            border: none;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .end-button:hover {
+            transform: translateY(-3px);
+        }
+        
+        .end-button.primary {
+            background: white;
+            color: #667eea;
+        }
+        
+        .end-button.secondary {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+        
+        @keyframes bounceIn {
+            0% { transform: scale(0); opacity: 0; }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes scaleIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -279,11 +434,7 @@
             </div>
             
             <div class="auction-info">
-                <div class="info-card">
-                    <div class="info-label">Status</div>
-                    <div class="info-value" id="auctionStatus">Loading...</div>
-                </div>
-                
+
                 <div class="info-card">
                     <div class="info-label">Time Remaining</div>
                     <div class="info-value timer" id="timeRemaining">--:--</div>
@@ -308,6 +459,11 @@
                     <div class="info-label">Participants</div>
                     <div class="info-value" id="participantCount">0</div>
                 </div>
+                
+                <div class="info-card">
+                    <div class="info-label">Your Balance</div>
+                    <div class="info-value highlight" id="userBalance">$0.00</div>
+                </div>
             </div>
             
             <div class="bid-section">
@@ -323,62 +479,188 @@
         </div>
     </div>
     
+    <!-- Auction End Overlay -->
+    <div id="auctionEndOverlay" class="auction-end-overlay">
+        <div class="auction-end-content">
+            <div class="end-icon" id="endIcon">🏆</div>
+            <div class="end-title" id="endTitle">Auction Ended!</div>
+            <div class="end-subtitle" id="endSubtitle">The auction has concluded</div>
+            
+            <div id="endCard"></div>
+            
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-label">Total Bids</div>
+                    <div class="stat-value" id="endBidCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Participants</div>
+                    <div class="stat-value" id="endParticipantCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Duration</div>
+                    <div class="stat-value" id="endDuration">0:00</div>
+                </div>
+            </div>
+            
+            <div class="end-actions">
+                <a href="${pageContext.request.contextPath}/browse-auctions" class="end-button primary">Browse Auctions</a>
+                <a href="${pageContext.request.contextPath}/home" class="end-button secondary">Go to Dashboard</a>
+            </div>
+        </div>
+    </div>
+    
     <script>
+        console.log('========================================');
+        console.log('SCRIPT LOADED AT:', new Date().toISOString());
+        console.log('========================================');
+        
         let ws = null;
         const auctionId = 'auction_${auction.id}';
+        const numericAuctionId = '${auction.id}';
+        let timerInterval = null;
+        let remainingTime = 0;
+        let keepAliveInterval = null;
+        
+        console.log('Variables initialized:');
+        console.log('  auctionId:', auctionId);
+        console.log('  numericAuctionId:', numericAuctionId);
+        console.log('========================================');
+        
+        // Decode JWT to check if user is guest
+        function decodeJWT(token) {
+            try {
+                const parts = token.split('.');
+                if (parts.length !== 3) return null;
+                const payload = JSON.parse(atob(parts[1]));
+                return payload;
+            } catch (e) {
+                console.error('Failed to decode JWT:', e);
+                return null;
+            }
+        }
+        
+        function updateUIForGuestMode(isGuest) {
+            if (isGuest) {
+                console.log('👁️ Guest mode detected - hiding bid controls');
+                // Hide balance and bid section
+                const balanceCard = document.querySelector('.info-card:has(#userBalance)');
+                if (balanceCard) balanceCard.style.display = 'none';
+                
+                const bidSection = document.querySelector('.bid-section');
+                if (bidSection) {
+                    bidSection.innerHTML = '<h3>👁️ Viewing only</h3>';
+                }
+            }
+        }
         
         function connect() {
-            const token = localStorage.getItem('jwtToken');
+            // Get auction-specific JWT token and WebSocket URL
+            const token = localStorage.getItem('jwtToken_' + numericAuctionId);
+            const wsUrl = localStorage.getItem('websocketUrl_' + numericAuctionId);
             
-            if (!token) {
-                showMessage('Please log in to participate in the auction', 'error');
-                updateConnectionStatus('disconnected', 'Not authenticated');
+            console.log('Auction ID:', numericAuctionId);
+            console.log('Token from localStorage:', token ? 'Found' : 'Not found');
+            console.log('WebSocket URL from localStorage:', wsUrl);
+            
+            // Check if guest mode
+            if (token) {
+                const payload = decodeJWT(token);
+                if (payload && payload.guest === true) {
+                    updateUIForGuestMode(true);
+                }
+            }
+            
+            if (!token || !wsUrl) {
+                // Not joined yet - join automatically
+                console.log('Not joined yet, joining auction automatically...');
+                joinAuctionAutomatically();
                 return;
             }
             
-            const wsUrl = 'ws://localhost:8080/ws?token=' + encodeURIComponent(token);
+            // Append JWT token as query parameter
+            const wsUrlWithToken = wsUrl + '?token=' + encodeURIComponent(token);
+            
+            console.log('Connecting to WebSocket:', wsUrlWithToken);
             updateConnectionStatus('connecting', 'Connecting to auction...');
             
-            ws = new WebSocket(wsUrl);
+            ws = new WebSocket(wsUrlWithToken);
             
             ws.onopen = () => {
-                console.log('WebSocket connected');
+                console.log('✅ WebSocket CONNECTED');
+                console.log('WebSocket.readyState:', ws.readyState);
+                console.log('WebSocket.url:', ws.url);
                 updateConnectionStatus('connected', 'Connected to auction');
                 
-                // Connect to the specific auction as a participant
-                send({
-                    type: 'connect_auction',
-                    auction_id: auctionId,
-                    role: 'participant'
-                });
+                // Connection and auction registration happens automatically in Erlang
+                // based on the JWT token (which contains user_id, auction_id, and balance)
+                
+                // Start keepalive - send ping every 30 seconds
+                keepAliveInterval = setInterval(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({type: 'ping'}));
+                        console.log('🏓 Sent keepalive ping');
+                    }
+                }, 30000);
             };
             
             ws.onmessage = (event) => {
+                console.log('📨 RAW MESSAGE:', event.data);
                 const msg = JSON.parse(event.data);
-                console.log('Received message:', msg);
+                console.log('📨 PARSED MESSAGE:', msg);
+                console.log('📨 Message type:', msg.type);
                 
                 if (msg.type === 'auction_update') {
+                    console.log('🔄 Processing auction_update');
                     updateAuctionInfo(msg.auction_state);
+                } else if (msg.type === 'connected') {
+                    console.log('✅ Received connected confirmation');
+                    document.getElementById('bidButton').disabled = false;
+                    // Request user balance (only if not guest)
+                    const token = localStorage.getItem('jwtToken_' + numericAuctionId);
+                    const payload = token ? decodeJWT(token) : null;
+                    if (!payload || !payload.guest) {
+                        send({type: 'get_balance'});
+                    }
+                } else if (msg.type === 'auction_ended') {
+                    console.log('🏁 Auction ended');
+                    handleAuctionEnded(msg);
+                } else if (msg.type === 'pong') {
+                    console.log('🏓 Received keepalive pong');
                 } else if (msg.type === 'error') {
+                    console.error('❌ Error message:', msg.message);
                     showMessage(msg.message || 'An error occurred', 'error');
                 } else if (msg.type === 'bid_placed') {
+                    console.log('💰 Bid placed successfully');
                     showMessage('Bid placed successfully!', 'success');
-                } else if (msg.type === 'connection_confirmed') {
-                    showMessage('Successfully joined auction', 'success');
-                    document.getElementById('bidButton').disabled = false;
+                } else if (msg.type === 'balance_response') {
+                    console.log('💵 Balance response:', msg.balance);
+                    updateBalance(msg.balance);
+                } else {
+                    console.warn('⚠️ Unknown message type:', msg.type);
                 }
             };
             
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                console.error('WebSocket readyState:', ws ? ws.readyState : 'null');
+                console.error('WebSocket URL was:', ws ? ws.url : 'unknown');
                 updateConnectionStatus('disconnected', 'Connection error');
                 showMessage('WebSocket connection error', 'error');
             };
             
             ws.onclose = () => {
-                console.log('WebSocket disconnected');
+                console.log('❌ WebSocket DISCONNECTED');
+                console.log('Close event - readyState:', ws ? ws.readyState : 'null');
+                console.log('Will attempt reconnect in 5 seconds...');
                 updateConnectionStatus('disconnected', 'Disconnected from auction');
                 document.getElementById('bidButton').disabled = true;
+                
+                // Clear keepalive interval
+                if (keepAliveInterval) {
+                    clearInterval(keepAliveInterval);
+                    keepAliveInterval = null;
+                }
                 
                 // Try to reconnect after 5 seconds
                 setTimeout(connect, 5000);
@@ -386,9 +668,12 @@
         }
         
         function send(msg) {
+            console.log('📤 SENDING:', msg);
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(msg));
+                console.log('📤 Message sent successfully');
             } else {
+                console.error('❌ Cannot send - WebSocket not open. ReadyState:', ws ? ws.readyState : 'null');
                 showMessage('Not connected to auction', 'error');
             }
         }
@@ -410,13 +695,23 @@
         
         function updateAuctionInfo(state) {
             // Update status
-            document.getElementById('auctionStatus').textContent = state.status || 'active';
             
-            // Update time remaining
-            const minutes = Math.floor(state.remaining_time / 60);
-            const seconds = state.remaining_time % 60;
-            document.getElementById('timeRemaining').textContent = 
-                minutes + ':' + String(seconds).padStart(2, '0');
+            // Update time remaining and start countdown
+            remainingTime = state.remaining_time;
+            updateTimerDisplay();
+            
+            // Clear existing timer and start new one
+            if (timerInterval) {
+                clearInterval(timerInterval);
+            }
+            timerInterval = setInterval(() => {
+                if (remainingTime > 0) {
+                    remainingTime--;
+                    updateTimerDisplay();
+                } else {
+                    clearInterval(timerInterval);
+                }
+            }, 1000);
             
             // Update bid count
             document.getElementById('bidCount').textContent = state.bid_count || 0;
@@ -443,6 +738,142 @@
             }
         }
         
+        function updateTimerDisplay() {
+            const minutes = Math.floor(remainingTime / 60);
+            const seconds = remainingTime % 60;
+            document.getElementById('timeRemaining').textContent = 
+                minutes + ':' + String(seconds).padStart(2, '0');
+        }
+        
+        function updateBalance(balance) {
+            document.getElementById('userBalance').textContent = 
+                '$' + (balance || 0).toFixed(2);
+        }
+        
+        function handleAuctionEnded(msg) {
+            console.log('Auction ended:', msg);
+            
+            // Stop keepalive pings
+            if (keepAliveInterval) {
+                clearInterval(keepAliveInterval);
+                keepAliveInterval = null;
+                console.log('🛑 Stopped keepalive pings');
+            }
+            
+            // Close WebSocket connection
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.close();
+                console.log('🔌 Closed WebSocket connection');
+            }
+            
+            // Stop timer
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            
+            // Get current username from session
+            const currentUsername = '${sessionScope.username}';
+            
+            // Determine if current user won
+            const hasWinner = msg.winner_user_id && msg.winner_user_id !== 'none' && msg.winner_user_id !== 'undefined';
+            const isWinner = hasWinner && String(msg.winner_user_id) === String(currentUsername);
+            
+            // Calculate duration
+            const durationMins = Math.floor(msg.total_duration / 60);
+            const durationSecs = String(msg.total_duration % 60).padStart(2, '0');
+            
+            // Update statistics
+            document.getElementById('endBidCount').textContent = msg.bid_count;
+            document.getElementById('endParticipantCount').textContent = msg.participant_count;
+            document.getElementById('endDuration').textContent = durationMins + ':' + durationSecs;
+            
+            // Build the result card
+            let cardHtml = '';
+            
+            if (!hasWinner) {
+                // No winner
+                document.getElementById('endIcon').textContent = '📦';
+                document.getElementById('endTitle').textContent = 'Auction Ended';
+                document.getElementById('endSubtitle').textContent = 'No bids were placed';
+                
+                cardHtml = '<div class="no-winner-card">' +
+                          '<div class="card-title">No Winner</div>' +
+                          '<p style="font-size: 18px; opacity: 0.9;">This auction concluded without any bids.</p>' +
+                          '</div>';
+            } else if (isWinner) {
+                // Current user won
+                document.getElementById('endIcon').textContent = '🎉';
+                document.getElementById('endTitle').textContent = 'Congratulations!';
+                document.getElementById('endSubtitle').textContent = 'You won this auction!';
+                
+                cardHtml = '<div class="winner-card">' +
+                          '<div class="card-title">🏆 You Are The Winner! 🏆</div>' +
+                          '<div class="winning-amount">$' + msg.winning_bid.toFixed(2) + '</div>' +
+                          '<p style="font-size: 20px; font-weight: 600;">Winning Bid</p>' +
+                          '<p style="font-size: 16px; opacity: 0.9; margin-top: 20px;">The winning amount has been deducted from your balance.</p>' +
+                          '</div>';
+            } else {
+                // Someone else won
+                document.getElementById('endIcon').textContent = '🎯';
+                document.getElementById('endTitle').textContent = 'Auction Ended';
+                document.getElementById('endSubtitle').textContent = 'Better luck next time!';
+                
+                cardHtml = '<div class="loser-card">' +
+                          '<div class="card-title">Auction Won by User ' + msg.winner_user_id + '</div>' +
+                          '<div class="winning-amount">$' + msg.winning_bid.toFixed(2) + '</div>' +
+                          '<p style="font-size: 18px; opacity: 0.9; margin-top: 15px;">Thank you for participating!</p>' +
+                          '</div>';
+            }
+            
+            document.getElementById('endCard').innerHTML = cardHtml;
+            
+            // Show overlay with slight delay for dramatic effect
+            setTimeout(() => {
+                document.getElementById('auctionEndOverlay').style.display = 'block';
+            }, 500);
+        }
+        
+        function joinAuctionAutomatically() {
+            console.log('🔄 AUTO-JOINING auction:', numericAuctionId);
+            updateConnectionStatus('connecting', 'Joining auction...');
+            
+            fetch('${pageContext.request.contextPath}/join-auction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'auctionId=' + encodeURIComponent(numericAuctionId)
+            })
+            .then(response => {
+                console.log('📥 Join response status:', response.status);
+                return response.json();
+            })
+            .then(data => {
+                console.log('📥 Join response data:', data);
+                if (data.success) {
+                    console.log('✅ Join successful');
+                    console.log('JWT Token:', data.jwtToken ? data.jwtToken.substring(0, 30) + '...' : 'MISSING');
+                    console.log('WebSocket URL:', data.websocketUrl);
+                    // Store JWT token and WebSocket URL
+                    localStorage.setItem('jwtToken_' + numericAuctionId, data.jwtToken);
+                    localStorage.setItem('websocketUrl_' + numericAuctionId, data.websocketUrl);
+                    console.log('✅ Stored in localStorage, retrying connection...');
+                    // Try to connect again
+                    connect();
+                } else {
+                    console.error('❌ Join failed:', data.error);
+                    showMessage('Error: ' + (data.error || 'Failed to join auction'), 'error');
+                    updateConnectionStatus('disconnected', 'Join failed');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Join error:', error);
+                showMessage('Error joining auction: ' + error.message, 'error');
+                updateConnectionStatus('disconnected', 'Join failed');
+            });
+        }
+        
         function updateConnectionStatus(status, message) {
             const statusDiv = document.getElementById('connectionStatus');
             statusDiv.className = 'connection-status ' + status;
@@ -463,10 +894,12 @@
         }
         
         // Connect when page loads
+        console.log('🚀 PAGE LOADED - Initializing connection...');
         window.addEventListener('load', connect);
         
         // Clean up on page unload
         window.addEventListener('beforeunload', () => {
+            console.log('🚪 Page unloading - closing WebSocket');
             if (ws) {
                 ws.close();
             }

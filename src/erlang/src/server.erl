@@ -252,8 +252,9 @@ handle_call(get_completed_auctions, _From, State) ->
 handle_call({register_auction, AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeIncrementBid}, _From, State) ->
     io:format("[SERVER] Registering auction via POST: ~p~n", [AuctionId]),
     
-    %% Create auction in database with system as creator
-    case mnesia_db:add_auction(AuctionId, "system", AuctionId, StartingPrice, 0, MinDuration, 0) of
+    %% Create auction in database with system as creator and current timestamp as start_time
+    StartTime = erlang:system_time(second),
+    case mnesia_db:add_auction(AuctionId, "system", AuctionId, StartingPrice, 0, MinDuration, StartTime) of
         {ok, _} ->
             %% Start auction handler process with additional parameters
             case auction_handler:start_link(AuctionId, MinIncrementBid, TimeIncrementBid) of

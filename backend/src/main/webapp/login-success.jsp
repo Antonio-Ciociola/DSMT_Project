@@ -38,17 +38,13 @@
 <body>
     <div class="container">
         <h1>Welcome, ${username}!</h1>
-        <p class="loading">Storing authentication token...</p>
+        <p class="loading">Login successful!</p>
         <p>Redirecting to home page...</p>
     </div>
 
     <script>
-        // Store JWT token in browser's localStorage
-        const token = '${jwtToken}';
-        if (token) {
-            localStorage.setItem('jwtToken', token);
-            console.log('JWT token stored in localStorage');
-        }
+        // JWT tokens are now generated when joining specific auctions
+        // (they are auction-specific and include balance info)
         
         // Redirect to home after a short delay
         setTimeout(() => {

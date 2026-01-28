@@ -21,7 +21,8 @@
     join_as_spectator/3,
     leave_auction/2,
     get_auction_state/1,
-    force_end/1
+    force_end/1,
+    post_auction_finish_to_java/4
 ]).
 
 %% gen_server callbacks
@@ -38,7 +39,8 @@
     item_name,
     min_bid,
     bid_increment,
-    duration,               % Total duration in seconds
+    duration,               % Initial duration in seconds
+    total_duration,         % Total duration including all time extensions
     remaining_time,         % Remaining seconds
     start_time,             % Timestamp when auction started
     status,                 % waiting | active | completed
@@ -127,6 +129,7 @@ init([AuctionId, MinIncrementBid, TimeIncrementBid]) ->
                 min_bid = element(5, Auction),         % min_bid field
                 bid_increment = MinIncrementBid,
                 duration = Duration,
+                total_duration = Duration,             % Initialize with base duration
                 remaining_time = RemainingTime,
                 start_time = StartTime,
                 status = Status,
@@ -141,8 +144,12 @@ init([AuctionId, MinIncrementBid, TimeIncrementBid]) ->
             NewState = case Status of
                 active ->
                     TimerRef = erlang:send_after(1000, self(), tick),
+                    io:format("[AUCTION ~p] Timer started! Remaining time: ~ps~n", 
+                              [AuctionId, RemainingTime]),
                     State#state{timer_ref = TimerRef};
                 _ ->
+                    io:format("[AUCTION ~p] Timer NOT started (status: ~p)~n", 
+                              [AuctionId, Status]),
                     State
             end,
             
@@ -223,6 +230,9 @@ handle_call({place_bid, Username, Amount}, _From, State = #state{status = active
                             %% Add time increment to remaining time (instead of full reset)
                             NewRemainingTime = State#state.remaining_time + State#state.time_increment_bid,
                             
+                            %% Update total duration to include this time extension
+                            NewTotalDuration = State#state.total_duration + State#state.time_increment_bid,
+                            
                             %% Reset countdown timer
                             cancel_timer(State#state.timer_ref),
                             NewTimerRef = erlang:send_after(1000, self(), tick),
@@ -231,6 +241,7 @@ handle_call({place_bid, Username, Amount}, _From, State = #state{status = active
                                 bids = NewBids,
                                 highest_bid = NewBid,
                                 remaining_time = NewRemainingTime,
+                                total_duration = NewTotalDuration,
                                 timer_ref = NewTimerRef,
                                 logical_clock = NewClock
                             },
@@ -319,15 +330,16 @@ handle_cast(_Msg, State) ->
 
 %% Handle countdown tick
 handle_info(tick, State) ->
-    CurrentTime = erlang:system_time(second),
-    NewStatus = calculate_status(State#state.start_time, State#state.duration, CurrentTime),
+    io:format("[AUCTION ~p] Tick received. Remaining: ~ps, Status: ~p~n", 
+              [State#state.auction_id, State#state.remaining_time, State#state.status]),
     
-    case NewStatus of
+    %% Only process tick if status is active
+    case State#state.status of
         active ->
-            %% Decrement remaining time (don't recalculate from start_time, preserves time increments)
+            %% Decrement remaining time
             NewRemainingTime = max(0, State#state.remaining_time - 1),
             
-            %% Check if auction should end
+            %% Check if auction should end based on remaining time
             case NewRemainingTime of
                 0 ->
                     %% Time's up - end the auction
@@ -352,7 +364,9 @@ handle_info(tick, State) ->
                     {noreply, NewState#state{timer_ref = TimerRef}}
             end;
         _ ->
-            %% Waiting or completed status, ignore tick
+            %% Not active, ignore tick
+            io:format("[AUCTION ~p] Tick ignored (status: ~p)~n", 
+                      [State#state.auction_id, State#state.status]),
             {noreply, State}
     end;
 
@@ -425,16 +439,26 @@ validate_bid(Amount, State) ->
 end_auction(State) ->
     cancel_timer(State#state.timer_ref),
     
+    io:format("~n========================================~n"),
+    io:format("[AUCTION ENDED] ID: ~p~n", [State#state.auction_id]),
+    io:format("[AUCTION ENDED] Item: ~p~n", [State#state.item_name]),
+    io:format("[AUCTION ENDED] Total Bids: ~p~n", [length(State#state.bids)]),
+    io:format("[AUCTION ENDED] Participants: ~p~n", [length(State#state.participants)]),
+    
     case State#state.highest_bid of
         none ->
-            io:format("[AUCTION ~p] No bids received~n", [State#state.auction_id]),
+            io:format("[AUCTION ENDED] Result: NO WINNER (no bids)~n"),
+            io:format("========================================~n~n"),
             mnesia_db:update_auction_winner(State#state.auction_id, none, 0),
-            broadcast_auction_ended(State, none, 0);
+            broadcast_auction_ended(State, none, 0),
+            notify_master_auction_complete(State#state.auction_id, none, 0, State#state.total_duration);
         {Winner, Amount, _Timestamp} ->
-            io:format("[AUCTION ~p] Winner: ~p with bid ~p~n", 
-                     [State#state.auction_id, Winner, Amount]),
+            io:format("[AUCTION ENDED] WINNER: ~p~n", [Winner]),
+            io:format("[AUCTION ENDED] Winning Bid: $~p~n", [Amount]),
+            io:format("========================================~n~n"),
             mnesia_db:update_auction_winner(State#state.auction_id, Winner, Amount),
-            broadcast_auction_ended(State, Winner, Amount)
+            broadcast_auction_ended(State, Winner, Amount),
+            notify_master_auction_complete(State#state.auction_id, Winner, Amount, State#state.total_duration)
     end,
     
     State#state{
@@ -451,6 +475,7 @@ get_state_info(State) ->
         min_bid => State#state.min_bid,
         bid_increment => State#state.bid_increment,
         duration => State#state.duration,
+        total_duration => State#state.total_duration,
         remaining_time => State#state.remaining_time,
         status => State#state.status,
         highest_bid => case State#state.highest_bid of
@@ -479,19 +504,117 @@ broadcast_state_update(State) ->
 
 %% @doc Broadcast auction end notification
 broadcast_auction_ended(State, Winner, Amount) ->
+    %% Count total bids and participants
+    BidCount = length(State#state.bids),
+    ParticipantCount = length(State#state.participants),
+    TotalDuration = State#state.total_duration,
+    
+    %% Convert winner to user_id (string)
+    WinnerUserId = case Winner of
+        none -> <<"none">>;
+        UserId when is_list(UserId) -> list_to_binary(UserId);
+        UserId when is_binary(UserId) -> UserId
+    end,
+    
     Message = {auction_ended, #{
         auction_id => State#state.auction_id,
-        winner => Winner,
-        winning_bid => Amount
+        winner_user_id => WinnerUserId,
+        winning_bid => Amount,
+        bid_count => BidCount,
+        participant_count => ParticipantCount,
+        total_duration => TotalDuration
     }},
     
+    %% Send to all participants
     lists:foreach(fun({_Username, Pid}) ->
         Pid ! Message
     end, State#state.participants),
     
+    %% Send to all spectators
     lists:foreach(fun({_Username, Pid}) ->
         Pid ! Message
-    end, State#state.spectators).
+    end, State#state.spectators),
+    
+    %% Notify master node about auction completion
+    notify_master_auction_complete(State#state.auction_id, Winner, Amount, State#state.total_duration).
+
+%% @doc Notify master node about auction completion
+notify_master_auction_complete(AuctionId, Winner, Amount, TotalDuration) ->
+    %% Only notify if we're on a slave node
+    case node() of
+        'auction@erlang-master' ->
+            %% We ARE the master, handle it directly
+            io:format("[AUCTION ~p] Master node handling auction completion directly~n", [AuctionId]),
+            post_auction_finish_to_java(AuctionId, Winner, Amount, TotalDuration);
+        _SlaveNode ->
+            %% We're a slave, notify the master
+            MasterNode = 'auction@erlang-master',
+            io:format("[AUCTION ~p] Notifying master node ~p of completion~n", [AuctionId, MasterNode]),
+            case rpc:call(MasterNode, slave_manager, handle_auction_complete, [AuctionId, Winner, Amount, TotalDuration]) of
+                ok ->
+                    io:format("[AUCTION ~p] Master notified successfully~n", [AuctionId]);
+                {error, Reason} ->
+                    io:format("[AUCTION ~p] Failed to notify master: ~p~n", [AuctionId, Reason]);
+                Other ->
+                    io:format("[AUCTION ~p] Unexpected response from master: ~p~n", [AuctionId, Other])
+            end
+    end.
+
+%% @doc POST auction finish to Java backend
+post_auction_finish_to_java(AuctionId, Winner, Amount, TotalDuration) ->
+    spawn(fun() ->
+        %% Java backend URL
+        JavaUrl = "http://backend:8080/api/finish-auction",
+        
+        %% Convert AuctionId to string without "auction_" prefix if present
+        AuctionIdStr = case AuctionId of
+            "auction_" ++ Id -> Id;
+            Id when is_list(Id) -> Id;
+            Id when is_binary(Id) -> binary_to_list(Id)
+        end,
+        
+        %% Prepare POST data
+        {WinnerId, FinalPrice} = case Winner of
+            none -> 
+                {"0", "0.00"};
+            UserId when is_list(UserId) -> 
+                PriceStr = if 
+                    is_float(Amount) -> float_to_list(Amount, [{decimals, 2}]);
+                    is_integer(Amount) -> float_to_list(float(Amount), [{decimals, 2}]);
+                    true -> lists:flatten(io_lib:format("~p", [Amount]))
+                end,
+                {UserId, PriceStr};
+            UserId when is_binary(UserId) -> 
+                PriceStr = if 
+                    is_float(Amount) -> float_to_list(Amount, [{decimals, 2}]);
+                    is_integer(Amount) -> float_to_list(float(Amount), [{decimals, 2}]);
+                    true -> lists:flatten(io_lib:format("~p", [Amount]))
+                end,
+                {binary_to_list(UserId), PriceStr}
+        end,
+        
+        TotalDurationStr = integer_to_list(TotalDuration),
+        
+        PostData = "auctionId=" ++ AuctionIdStr ++ 
+                   "&winnerId=" ++ WinnerId ++ 
+                   "&finalPrice=" ++ FinalPrice ++
+                   "&totalDuration=" ++ TotalDurationStr,
+        
+        io:format("[AUCTION ~p] POSTing to Java: ~p~n", [AuctionId, PostData]),
+        
+        %% Make HTTP POST request
+        case httpc:request(post, 
+                          {JavaUrl, [], "application/x-www-form-urlencoded", PostData},
+                          [{timeout, 5000}],
+                          []) of
+            {ok, {{_, 200, _}, _, ResponseBody}} ->
+                io:format("[AUCTION ~p] Java finish-auction success: ~p~n", [AuctionId, ResponseBody]);
+            {ok, {{_, StatusCode, _}, _, ResponseBody}} ->
+                io:format("[AUCTION ~p] Java finish-auction failed (~p): ~p~n", [AuctionId, StatusCode, ResponseBody]);
+            {error, Reason} ->
+                io:format("[AUCTION ~p] Failed to POST to Java: ~p~n", [AuctionId, Reason])
+        end
+    end).
 
 %% @doc Cancel a timer if it exists
 cancel_timer(none) -> ok;

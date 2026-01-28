@@ -17,6 +17,10 @@
 -export([
     start_node/0,
     start_node/1,
+    start_master_node/0,
+    start_master_node/1,
+    start_slave_node/1,
+    start_slave_node/2,
     join_cluster/1
 ]).
 
@@ -27,10 +31,18 @@
 start(_StartType, _StartArgs) ->
     io:format("[APP] Starting auction application~n"),
     
-    %% Start HTTP server on configured port
+    %% Get node role and port
+    Role = application:get_env(auction_app, node_role, master),
     Port = application:get_env(auction_app, http_port, 8081),
+    
+    io:format("[APP] Node role: ~p~n", [Role]),
     io:format("[APP] Starting HTTP server on port ~p~n", [Port]),
-    http_server:start(Port),
+    
+    %% Start appropriate HTTP server based on role
+    case Role of
+        master -> http_server:start_master(Port);
+        slave -> http_server:start_slave(Port)
+    end,
     
     auction_supervisor:start_link().
 
@@ -47,8 +59,51 @@ stop(_State) ->
 start_node() ->
     start_node(8081).
 
+%% @doc Start master node on default port 8081
+start_master_node() ->
+    start_master_node(8081).
+
+%% @doc Start master node with custom HTTP port
+start_master_node(Port) ->
+    io:format("~n===========================================~n"),
+    io:format("  STARTING MASTER NODE~n"),
+    io:format("  Node: ~p~n", [node()]),
+    io:format("  HTTP Port: ~p~n", [Port]),
+    io:format("  Role: MASTER (POST endpoints)~n"),
+    io:format("===========================================~n~n"),
+    
+    %% Set role to master
+    application:set_env(auction_app, node_role, master),
+    start_node_internal(Port).
+
+%% @doc Start slave node (must provide master node for clustering)
+start_slave_node(Port) ->
+    start_slave_node(Port, 'auction@erlang-master').
+
+%% @doc Start slave node with custom port and master node
+start_slave_node(Port, MasterNode) ->
+    io:format("~n===========================================~n"),
+    io:format("  STARTING SLAVE NODE~n"),
+    io:format("  Node: ~p~n", [node()]),
+    io:format("  HTTP Port: ~p~n", [Port]),
+    io:format("  Role: SLAVE (WebSocket only)~n"),
+    io:format("  Master: ~p~n", [MasterNode]),
+    io:format("===========================================~n~n"),
+    
+    %% Set role to slave
+    application:set_env(auction_app, node_role, slave),
+    start_node_internal(Port),
+    
+    %% Join master's cluster
+    io:format("[APP] Joining master cluster: ~p~n", [MasterNode]),
+    join_cluster(MasterNode).
+
 %% @doc Start a node with custom HTTP port
 start_node(Port) ->
+    start_node_internal(Port).
+
+%% @doc Internal function to start node with custom HTTP port
+start_node_internal(Port) ->
     io:format("~n===========================================~n"),
     io:format("  STARTING AUCTION NODE~n"),
     io:format("  Node: ~p~n", [node()]),
@@ -71,17 +126,43 @@ start_node(Port) ->
             erlang:error(MnesiaError)
     end,
     
-    %% Check if schema exists, create if first node
-    SchemaExists = filelib:is_dir("Mnesia." ++ atom_to_list(node())),
+    %% Stop Mnesia to check/create schema
+    mnesia:stop(),
+    
+    %% Check if schema exists, create if not
+    SchemaDir = "Mnesia." ++ atom_to_list(node()),
+    SchemaExists = filelib:is_dir(SchemaDir) andalso 
+                   filelib:is_regular(filename:join(SchemaDir, "schema.DAT")),
+    
     case SchemaExists of
         false ->
-            io:format("[APP] No schema found, initializing as first node...~n"),
-            mnesia_db:create_schema([node()]),
-            mnesia:start(),
+            io:format("[APP] No schema found, creating schema...~n"),
+            case mnesia:create_schema([node()]) of
+                ok -> 
+                    io:format("[APP] Schema created~n");
+                {error, {_, {already_exists, _}}} ->
+                    io:format("[APP] Schema already exists~n");
+                SchemaError ->
+                    io:format("[APP] Schema creation error: ~p~n", [SchemaError])
+            end;
+        true ->
+            io:format("[APP] Schema exists~n")
+    end,
+    
+    %% Start Mnesia
+    mnesia:start(),
+    
+    %% Wait for Mnesia tables to be ready
+    mnesia:wait_for_tables(mnesia:system_info(local_tables), 5000),
+    
+    %% Check if tables exist, create if not
+    Tables = mnesia:system_info(tables),
+    case lists:member(auction, Tables) of
+        false ->
+            io:format("[APP] Tables not found, creating...~n"),
             mnesia_db:create_tables();
         true ->
-            io:format("[APP] Schema exists, starting Mnesia...~n"),
-            mnesia:start()
+            io:format("[APP] Tables already exist~n")
     end,
     
     %% Set HTTP port
@@ -113,12 +194,12 @@ join_cluster(RemoteNode) ->
     io:format("  Remote node: ~p~n", [RemoteNode]),
     io:format("===========================================~n~n"),
     
-    %% Connect to remote node
-    case net_adm:ping(RemoteNode) of
+    %% Ping remote node with retries
+    case ping_with_retry(RemoteNode, 10, 2000) of
         pong ->
             io:format("[APP] Connected to ~p~n", [RemoteNode]);
         pang ->
-            io:format("[APP] ERROR: Cannot connect to ~p~n", [RemoteNode]),
+            io:format("[APP] ERROR: Cannot connect to ~p after retries~n", [RemoteNode]),
             erlang:error({cannot_connect, RemoteNode})
     end,
     
@@ -134,7 +215,14 @@ join_cluster(RemoteNode) ->
     mnesia:change_config(extra_db_nodes, [RemoteNode]),
     
     %% Copy schema and tables
-    {ok, _} = mnesia:change_table_copy_type(schema, node(), disc_copies),
+    case mnesia:change_table_copy_type(schema, node(), disc_copies) of
+        {atomic, ok} ->
+            io:format("[APP] Schema copied to local node~n");
+        {aborted, {already_exists, schema, _, disc_copies}} ->
+            io:format("[APP] Schema already exists as disc_copies~n");
+        SchemaError ->
+            io:format("[APP] Schema copy warning: ~p~n", [SchemaError])
+    end,
     
     Tables = mnesia:system_info(tables) -- [schema],
     lists:foreach(fun(Table) ->
@@ -157,7 +245,7 @@ join_cluster(RemoteNode) ->
 
 %% @doc Start Cowboy dependencies
 start_cowboy_deps() ->
-    Apps = [crypto, asn1, public_key, ssl, jsx, jose, cowlib, ranch, cowboy],
+    Apps = [crypto, asn1, public_key, ssl, inets, jsx, jose, cowlib, ranch, cowboy],
     lists:foreach(fun(App) ->
         case application:start(App) of
             ok -> 
@@ -181,4 +269,17 @@ wait_for_server(Attempts) ->
         _Pid ->
             io:format("[APP] Server is ready~n"),
             ok
+    end.
+
+%% @doc Ping remote node with retries
+ping_with_retry(_Node, 0, _Delay) ->
+    pang;
+ping_with_retry(Node, Retries, Delay) ->
+    case net_adm:ping(Node) of
+        pong ->
+            pong;
+        pang ->
+            io:format("[APP] Waiting for ~p... (~p retries left)~n", [Node, Retries - 1]),
+            timer:sleep(Delay),
+            ping_with_retry(Node, Retries - 1, Delay)
     end.
