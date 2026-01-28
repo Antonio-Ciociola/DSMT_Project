@@ -523,6 +523,10 @@
         let auctionEndTime = null;  // Absolute timestamp when auction ends
         let serverTimeDiff = 0;     // Difference between server and client time
         let keepAliveInterval = null;
+        let rttSamples = [];        // Round-trip time samples for latency estimation
+        let pingTimestamp = null;   // Timestamp when ping was sent
+        let ntpOffsetSamples = [];  // NTP clock offset samples
+        let ntpSyncInProgress = false;  // Flag to prevent concurrent sync requests
         
         console.log('Variables initialized:');
         console.log('  auctionId:', auctionId);
@@ -613,11 +617,17 @@
                 // Connection and auction registration happens automatically in Erlang
                 // based on the JWT token (which contains user_id, auction_id, and balance)
                 
-                // Start keepalive - send ping every 30 seconds
+                // Start keepalive - send ping every 30 seconds with timestamp for RTT measurement
                 keepAliveInterval = setInterval(() => {
                     if (ws && ws.readyState === WebSocket.OPEN) {
-                        ws.send(JSON.stringify({type: 'ping'}));
-                        console.log('🏓 Sent keepalive ping');
+                        pingTimestamp = performance.now();
+                        ws.send(JSON.stringify({type: 'ping', timestamp: pingTimestamp}));
+                        console.log('🏓 Sent keepalive ping at', pingTimestamp);
+                        
+                        // Also perform NTP sync periodically (every other ping)
+                        if (Math.random() < 0.5) {
+                            setTimeout(() => performNTPSync(), 500);
+                        }
                     }
                 }, 30000);
             };
@@ -633,7 +643,14 @@
                     updateAuctionInfo(msg.auction_state);
                 } else if (msg.type === 'connected') {
                     console.log('✅ Received connected confirmation');
-                    document.getElementById('bidButton').disabled = false;
+                    const bidButton = document.getElementById('bidButton');
+                    if (bidButton) {
+                        bidButton.disabled = false;
+                    }
+                    
+                    // Perform initial NTP time sync
+                    setTimeout(() => performNTPSync(), 100);
+                    
                     // Request user balance (only if not guest)
                     const token = localStorage.getItem('jwtToken_' + numericAuctionId);
                     const payload = token ? decodeJWT(token) : null;
@@ -645,6 +662,29 @@
                     handleAuctionEnded(msg);
                 } else if (msg.type === 'pong') {
                     console.log('🏓 Received keepalive pong');
+                    
+                    // Measure round-trip time for latency compensation
+                    if (msg.timestamp && msg.timestamp === pingTimestamp) {
+                        const rtt = performance.now() - pingTimestamp;
+                        rttSamples.push(rtt);
+                        
+                        // Keep last 10 samples for statistical accuracy
+                        if (rttSamples.length > 10) {
+                            rttSamples.shift();
+                        }
+                        
+                        // Calculate median RTT (more robust than average)
+                        const sortedRTT = [...rttSamples].sort((a, b) => a - b);
+                        const medianRTT = sortedRTT[Math.floor(sortedRTT.length / 2)];
+                        const oneWayLatency = medianRTT / 2000; // Convert to seconds
+                        
+                        console.log('📡 RTT:', rtt.toFixed(2), 'ms, Median:', medianRTT.toFixed(2), 'ms, One-way:', (oneWayLatency * 1000).toFixed(2), 'ms');
+                        
+                        pingTimestamp = null;
+                    }
+                } else if (msg.type === 'time_sync_response') {
+                    console.log('⏱️ Received NTP-style time sync response');
+                    handleTimeSyncResponse(msg);
                 } else if (msg.type === 'error') {
                     console.error('❌ Error message:', msg.message);
                     showMessage(msg.message || 'An error occurred', 'error');
@@ -696,6 +736,57 @@
             }
         }
         
+        // NTP-style time synchronization using formula: offset = ½((T2 - T1) + (T3 - T4))
+        // Where: T1 = client send, T2 = server receive, T3 = server send, T4 = client receive
+        function performNTPSync() {
+            if (ntpSyncInProgress || !ws || ws.readyState !== WebSocket.OPEN) {
+                return;
+            }
+            
+            ntpSyncInProgress = true;
+            const t1 = Date.now(); // Ti-3: Client send timestamp
+            
+            send({ type: 'time_sync', t1: t1 });
+        }
+        
+        function handleTimeSyncResponse(msg) {
+            const t4 = Date.now(); // Ti: Client receive timestamp
+            const t1 = msg.t1;     // Ti-3: Client send timestamp (echoed back)
+            const t2 = msg.t2;     // Ti-2: Server receive timestamp
+            const t3 = msg.t3;     // Ti-1: Server send timestamp
+            
+            // NTP clock offset formula: offset = ½((T2 - T1) + (T3 - T4))
+            // This is equivalent to: offset = ½(Ti-2 - Ti-3 + Ti-1 - Ti)
+            const offset = 0.5 * ((t2 - t1) + (t3 - t4));
+            
+            // Round-trip delay: d = (T4 - T1) - (T3 - T2)
+            const delay = (t4 - t1) - (t3 - t2);
+            
+            ntpOffsetSamples.push(offset);
+            
+            // Keep last 10 samples
+            if (ntpOffsetSamples.length > 10) {
+                ntpOffsetSamples.shift();
+            }
+            
+            // Calculate median offset (robust to outliers)
+            const sortedOffsets = [...ntpOffsetSamples].sort((a, b) => a - b);
+            const medianOffset = sortedOffsets[Math.floor(sortedOffsets.length / 2)];
+            
+            console.log('🕐 NTP Sync:', {
+                t1: t1, t2: t2, t3: t3, t4: t4,
+                offset: offset.toFixed(2) + 'ms',
+                delay: delay.toFixed(2) + 'ms',
+                medianOffset: medianOffset.toFixed(2) + 'ms',
+                samples: ntpOffsetSamples.length
+            });
+            
+            // Update server time difference using NTP offset (convert ms to seconds)
+            serverTimeDiff = medianOffset / 1000;
+            
+            ntpSyncInProgress = false;
+        }
+        
         function placeBid() {
             const amount = parseFloat(document.getElementById('bidAmount').value);
             
@@ -712,24 +803,50 @@
         }
         
         function updateAuctionInfo(state) {
-            // Always update time sync when receiving server updates
-            // This handles cases where client clock changes during auction
+            // Update time sync when receiving server updates (only if not initialized or significant drift)
             if (state.server_time && state.auction_end_time) {
                 const clientTime = Math.floor(Date.now() / 1000);
-                const newServerTimeDiff = state.server_time - clientTime;
+                let newServerTimeDiff;
+                let needsUpdate = false;
                 
-                // Detect if client clock changed significantly (more than 2 seconds drift)
-                if (Math.abs(newServerTimeDiff - serverTimeDiff) > 2) {
-                    console.warn('⚠️ Client clock drift detected! Old diff:', serverTimeDiff, 'New diff:', newServerTimeDiff);
+                // Only calculate if we need to update
+                if (serverTimeDiff === 0) {
+                    // First time sync - always calculate
+                    needsUpdate = true;
+                }
+                
+                if (needsUpdate) {
+                    // Prefer NTP offset if available, otherwise use RTT-based estimation
+                    if (ntpOffsetSamples.length > 0) {
+                        // Use NTP clock offset (already calculated as median)
+                        const sortedOffsets = [...ntpOffsetSamples].sort((a, b) => a - b);
+                        const medianOffset = sortedOffsets[Math.floor(sortedOffsets.length / 2)];
+                        newServerTimeDiff = medianOffset / 1000; // Convert ms to seconds
+                        console.log('🕐 Using NTP offset:', medianOffset.toFixed(2), 'ms');
+                    } else {
+                        // Fallback to RTT-based one-way latency estimation
+                        let oneWayLatency = 0;
+                        if (rttSamples.length > 0) {
+                            const sortedRTT = [...rttSamples].sort((a, b) => a - b);
+                            const medianRTT = sortedRTT[Math.floor(sortedRTT.length / 2)];
+                            oneWayLatency = medianRTT / 2000; // Convert to seconds
+                        }
+                        
+                        // Adjust server time by estimated network delay
+                        const adjustedServerTime = state.server_time + oneWayLatency;
+                        newServerTimeDiff = adjustedServerTime - clientTime;
+                        console.log('📡 Using RTT-based offset:', (oneWayLatency * 1000).toFixed(2), 'ms');
+                    }
+                    
                     serverTimeDiff = newServerTimeDiff;
-                } else if (!serverTimeDiff) {
-                    // First time sync
-                    serverTimeDiff = newServerTimeDiff;
+                    
+                    // Print offset only when updating
+                    console.log('⏰ Time sync - Method:', ntpOffsetSamples.length > 0 ? 'NTP' : 'RTT');
+                    console.log('⏰ Current offset:', (serverTimeDiff * 1000).toFixed(2), 'ms');
+                    console.log('⏰ Server time:', state.server_time, 'Auction end:', state.auction_end_time);
                 }
                 
                 auctionEndTime = state.auction_end_time;
-                
-                console.log('⏰ Time sync - Server:', state.server_time, 'Client:', clientTime, 'Diff:', serverTimeDiff, 'End:', auctionEndTime);
             }
             
             // Start local countdown timer if not already running
@@ -765,20 +882,28 @@
                 document.getElementById('highestBidder').textContent = 
                     'by ' + state.highest_bid.username;
                 
-                // Suggest next bid amount
-                const minNextBid = state.highest_bid.amount + ${auction.minBidIncrement};
-                document.getElementById('bidAmount').value = minNextBid.toFixed(2);
-                document.getElementById('bidAmount').min = minNextBid;
+                // Suggest next bid amount (only if bidAmount element exists - not for guests)
+                const bidAmountEl = document.getElementById('bidAmount');
+                if (bidAmountEl) {
+                    const minNextBid = state.highest_bid.amount + ${auction.minBidIncrement};
+                    bidAmountEl.value = minNextBid.toFixed(2);
+                    bidAmountEl.min = minNextBid;
+                }
             } else {
                 document.getElementById('highestBidCard').style.display = 'none';
-                document.getElementById('bidAmount').value = ${auction.startingPrice};
-                document.getElementById('bidAmount').min = ${auction.startingPrice};
+                
+                // Set starting price (only if bidAmount element exists - not for guests)
+                const bidAmountEl = document.getElementById('bidAmount');
+                if (bidAmountEl) {
+                    bidAmountEl.value = ${auction.startingPrice};
+                    bidAmountEl.min = ${auction.startingPrice};
+                }
             }
         }
         
         function updateTimerDisplay() {
             const minutes = Math.floor(remainingTime / 60);
-            const seconds = remainingTime % 60;
+            const seconds = Math.floor(remainingTime % 60);
             document.getElementById('timeRemaining').textContent = 
                 minutes + ':' + String(seconds).padStart(2, '0');
         }

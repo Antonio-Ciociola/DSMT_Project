@@ -328,9 +328,34 @@ handle_message(#{<<"type">> := <<"get_completed_auctions">>}, State) ->
             error_response(format_error(Reason), State)
     end;
 
-%% Keepalive ping
-handle_message(#{<<"type">> := <<"ping">>}, State) ->
-    Response = jsx:encode(#{type => <<"pong">>}),
+%% Keepalive ping - echo back with timestamp for RTT measurement
+handle_message(#{<<"type">> := <<"ping">>} = Msg, State) ->
+    %% Echo back the client's timestamp if provided (for RTT calculation)
+    Timestamp = maps:get(<<"timestamp">>, Msg, null),
+    Response = jsx:encode(#{
+        type => <<"pong">>,
+        timestamp => Timestamp
+    }),
+    {reply, {text, Response}, State};
+
+%% NTP-style time sync request
+handle_message(#{<<"type">> := <<"time_sync">>, <<"t1">> := T1} = _Msg, State) ->
+    %% NTP algorithm timestamps:
+    %% T1 (Ti-3): Client send time
+    %% T2 (Ti-2): Server receive time (now)
+    %% T3 (Ti-1): Server send time (now, nearly same as T2)
+    %% T4 (Ti): Client receive time (calculated by client)
+    
+    %% Get server timestamp in milliseconds (high precision)
+    T2 = erlang:system_time(millisecond),
+    T3 = erlang:system_time(millisecond),
+    
+    Response = jsx:encode(#{
+        type => <<"time_sync_response">>,
+        t1 => T1,  % Echo back client's send time
+        t2 => T2,  % Server receive time
+        t3 => T3   % Server send time
+    }),
     {reply, {text, Response}, State};
 
 %% Unknown message type
