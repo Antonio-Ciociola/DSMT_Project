@@ -30,6 +30,31 @@ init(Req0, State) ->
     end.
 
 handle_post(Req0, State) ->
+    %% Validate API key
+    ApiKey = os:getenv("ERLANG_API_KEY", "auction_secret_key_2026"),
+    ProvidedKey = cowboy_req:header(<<"x-api-key">>, Req0),
+    
+    case ProvidedKey of
+        undefined ->
+            io:format("[POST] Unauthorized - no API key provided~n"),
+            Req = cowboy_req:reply(401, #{
+                <<"content-type">> => <<"application/json">>
+            }, jsx:encode(#{error => <<"Unauthorized - API key required">>}), Req0),
+            {ok, Req, State};
+        _ ->
+            case binary_to_list(ProvidedKey) =:= ApiKey of
+                false ->
+                    io:format("[POST] Unauthorized - invalid API key~n"),
+                    Req = cowboy_req:reply(401, #{
+                        <<"content-type">> => <<"application/json">>
+                    }, jsx:encode(#{error => <<"Unauthorized - Invalid API key">>}), Req0),
+                    {ok, Req, State};
+                true ->
+                    handle_authenticated_post(Req0, State)
+            end
+    end.
+
+handle_authenticated_post(Req0, State) ->
     {ok, Body, Req1} = cowboy_req:read_body(Req0),
     
     try

@@ -80,6 +80,11 @@ public class AuctionStarterJob implements Job {
         try {
             conn.setRequestMethod("POST");
             conn.setRequestProperty("Content-Type", "application/json");
+            
+            // Add API key for authentication
+            String apiKey = System.getenv().getOrDefault("ERLANG_API_KEY", "auction_secret_key_2026");
+            conn.setRequestProperty("X-API-Key", apiKey);
+            
             conn.setDoOutput(true);
             
             // Build JSON payload with required fields
