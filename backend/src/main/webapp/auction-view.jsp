@@ -511,6 +511,12 @@
     </div>
     
     <script>
+
+
+        // ========================================
+        // Log script load time, initialize variables 
+        // ========================================
+
         console.log('========================================');
         console.log('SCRIPT LOADED AT:', new Date().toISOString());
         console.log('========================================');
@@ -532,8 +538,14 @@
         console.log('  auctionId:', auctionId);
         console.log('  numericAuctionId:', numericAuctionId);
         console.log('========================================');
+
+
+        // =======================================
+        // Functions Definition
+        // =======================================
         
         // Decode JWT to check if user is guest
+        // Returns payload object or null on failure
         function decodeJWT(token) {
             try {
                 const parts = token.split('.');
@@ -546,41 +558,57 @@
             }
         }
         
+        // Update UI for guest mode
+        // Hides bid controls and shows appropriate message
         function updateUIForGuestMode(isGuest) {
+
+            // Hides bid controls and shows appropriate message
             if (isGuest) {
-                console.log('👁️ Guest mode detected - hiding bid controls');
+
+                // Log guest mode detection
+                console.log('Guest mode detected - hiding bid controls');
+                
                 // Hide balance and bid section
                 const balanceCard = document.querySelector('.info-card:has(#userBalance)');
                 if (balanceCard) balanceCard.style.display = 'none';
                 
+                // Update bid section
                 const bidSection = document.querySelector('.bid-section');
                 if (bidSection) {
+
                     // Check JWT to determine reason for guest mode
                     const token = localStorage.getItem('jwtToken_' + numericAuctionId);
-                    let message = '👁️ Viewing as Guest - You are viewing this auction in read-only mode. Log in to place bids.';
+                    let message = 'Viewing as Guest - You are viewing this auction in read-only mode. Log in to place bids.';
                     
+                    // Check if user is owner or active in another auction
                     if (token) {
                         const payload = decodeJWT(token);
                         if (payload && payload.sub) {
                             const username = payload.sub;
                             if (username.startsWith('guest_owner_')) {
-                                message = '👁️ Owner View - You cannot bid on your own auction.';
+                                message = 'Owner View - You cannot bid on your own auction.';
                             } else if (username.startsWith('guest_')) {
-                                message = '👁️ View Only - You are currently active in another auction.';
+                                message = 'View Only - You are currently active in another auction.';
                             }
                         }
                     }
                     
-                    bidSection.innerHTML = '<h3>👁️ Viewing only</h3><p style="margin-top: 10px; color: #666;">' + message + '</p>';
+                    // Update bid section with appropriate message
+                    bidSection.innerHTML = '<h3>Viewing only</h3><p style="margin-top: 10px; color: #666;">' + message + '</p>';
                 }
             }
         }
-        
+      
+        // Open WebSocket connection and handle events
+        // Includes automatic reconnection logic and RTT/NTP time sync
+        // Also handles auction joining if not already joined
         function connect() {
+
             // Get auction-specific JWT token and WebSocket URL
             const token = localStorage.getItem('jwtToken_' + numericAuctionId);
             const wsUrl = localStorage.getItem('websocketUrl_' + numericAuctionId);
             
+            // Log connection attempt
             console.log('Auction ID:', numericAuctionId);
             console.log('Token from localStorage:', token ? 'Found' : 'Not found');
             console.log('WebSocket URL from localStorage:', wsUrl);
@@ -593,23 +621,22 @@
                 }
             }
             
+            // Not joined yet - join automatically
             if (!token || !wsUrl) {
-                // Not joined yet - join automatically
                 console.log('Not joined yet, joining auction automatically...');
                 joinAuctionAutomatically();
                 return;
             }
             
-            // Append JWT token as query parameter
+            // Append JWT token as query parameter and connect
             const wsUrlWithToken = wsUrl + '?token=' + encodeURIComponent(token);
-            
             console.log('Connecting to WebSocket:', wsUrlWithToken);
             updateConnectionStatus('connecting', 'Connecting to auction...');
-            
             ws = new WebSocket(wsUrlWithToken);
             
+            // WebSocket event handlers
             ws.onopen = () => {
-                console.log('✅ WebSocket CONNECTED');
+                console.log('WebSocket CONNECTED');
                 console.log('WebSocket.readyState:', ws.readyState);
                 console.log('WebSocket.url:', ws.url);
                 updateConnectionStatus('connected', 'Connected to auction');
@@ -618,11 +645,12 @@
                 // based on the JWT token (which contains user_id, auction_id, and balance)
                 
                 // Start keepalive - send ping every 30 seconds with timestamp for RTT measurement
+                // Also perform NTP sync periodically (every other ping)
                 keepAliveInterval = setInterval(() => {
                     if (ws && ws.readyState === WebSocket.OPEN) {
                         pingTimestamp = performance.now();
                         ws.send(JSON.stringify({type: 'ping', timestamp: pingTimestamp}));
-                        console.log('🏓 Sent keepalive ping at', pingTimestamp);
+                        console.log('Sent keepalive ping at', pingTimestamp);
                         
                         // Also perform NTP sync periodically (every other ping)
                         if (Math.random() < 0.5) {
@@ -631,18 +659,24 @@
                     }
                 }, 30000);
             };
-            
+           
+            // Handle incoming messages
             ws.onmessage = (event) => {
-                console.log('📨 RAW MESSAGE:', event.data);
+
+                // Log raw and parsed message
+                console.log('RAW MESSAGE:', event.data);
                 const msg = JSON.parse(event.data);
-                console.log('📨 PARSED MESSAGE:', msg);
-                console.log('📨 Message type:', msg.type);
+                console.log('PARSED MESSAGE:', msg);
+                console.log('Message type:', msg.type);
                 
+                // If auction update, update auction info
                 if (msg.type === 'auction_update') {
-                    console.log('🔄 Processing auction_update');
+                    console.log('Processing auction_update');
                     updateAuctionInfo(msg.auction_state);
-                } else if (msg.type === 'connected') {
-                    console.log('✅ Received connected confirmation');
+                }        
+                // Handle connected confirmation
+                else if (msg.type === 'connected') {
+                    console.log('Received connected confirmation');
                     const bidButton = document.getElementById('bidButton');
                     if (bidButton) {
                         bidButton.disabled = false;
@@ -657,11 +691,15 @@
                     if (!payload || !payload.guest) {
                         send({type: 'get_balance'});
                     }
-                } else if (msg.type === 'auction_ended') {
-                    console.log('🏁 Auction ended');
+                } 
+                // Handle auction ended message
+                else if (msg.type === 'auction_ended') {
+                    console.log('Auction ended');
                     handleAuctionEnded(msg);
-                } else if (msg.type === 'pong') {
-                    console.log('🏓 Received keepalive pong');
+                } 
+                // Handle keepalive pong response
+                else if (msg.type === 'pong') {
+                    console.log('Received keepalive pong');
                     
                     // Measure round-trip time for latency compensation
                     if (msg.timestamp && msg.timestamp === pingTimestamp) {
@@ -676,29 +714,40 @@
                         // Calculate median RTT (more robust than average)
                         const sortedRTT = [...rttSamples].sort((a, b) => a - b);
                         const medianRTT = sortedRTT[Math.floor(sortedRTT.length / 2)];
-                        const oneWayLatency = medianRTT / 2000; // Convert to seconds
+                        const oneWayLatency = medianRTT / 1000; // Convert to seconds
                         
-                        console.log('📡 RTT:', rtt.toFixed(2), 'ms, Median:', medianRTT.toFixed(2), 'ms, One-way:', (oneWayLatency * 1000).toFixed(2), 'ms');
+                        console.log('RTT:', rtt.toFixed(2), 'ms, Median:', medianRTT.toFixed(2), 'ms, One-way:', (oneWayLatency * 1000).toFixed(2), 'ms');
                         
                         pingTimestamp = null;
                     }
-                } else if (msg.type === 'time_sync_response') {
-                    console.log('⏱️ Received NTP-style time sync response');
+                } 
+                // Handle NTP-style time sync response
+                else if (msg.type === 'time_sync_response') {
+                    console.log('Received NTP-style time sync response');
                     handleTimeSyncResponse(msg);
-                } else if (msg.type === 'error') {
-                    console.error('❌ Error message:', msg.message);
+                } 
+                // Handle error placed messages
+                else if (msg.type === 'error') {
+                    console.error('Error message:', msg.message);
                     showMessage(msg.message || 'An error occurred', 'error');
-                } else if (msg.type === 'bid_placed') {
-                    console.log('💰 Bid placed successfully');
+                } 
+                // Handle bid placed confirmation
+                else if (msg.type === 'bid_placed') {
+                    console.log('Bid placed successfully');
                     showMessage('Bid placed successfully!', 'success');
-                } else if (msg.type === 'balance_response') {
-                    console.log('💵 Balance response:', msg.balance);
+                } 
+                // Handle balance response
+                else if (msg.type === 'balance_response') {
+                    console.log('Balance response:', msg.balance);
                     updateBalance(msg.balance);
-                } else {
-                    console.warn('⚠️ Unknown message type:', msg.type);
+                } 
+                // Unknown message type
+                else {
+                    console.warn('Unknown message type:', msg.type);
                 }
             };
             
+            // Handle WebSocket errors
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
                 console.error('WebSocket readyState:', ws ? ws.readyState : 'null');
@@ -707,8 +756,9 @@
                 showMessage('WebSocket connection error', 'error');
             };
             
+            // Handle WebSocket closure and attempt reconnection
             ws.onclose = () => {
-                console.log('❌ WebSocket DISCONNECTED');
+                console.log('WebSocket DISCONNECTED');
                 console.log('Close event - readyState:', ws ? ws.readyState : 'null');
                 console.log('Will attempt reconnect in 5 seconds...');
                 updateConnectionStatus('disconnected', 'Disconnected from auction');
@@ -725,13 +775,14 @@
             };
         }
         
+        // Send message via WebSocket with error handling
         function send(msg) {
-            console.log('📤 SENDING:', msg);
+            console.log('SENDING:', msg);
             if (ws && ws.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(msg));
-                console.log('📤 Message sent successfully');
+                console.log('Message sent successfully');
             } else {
-                console.error('❌ Cannot send - WebSocket not open. ReadyState:', ws ? ws.readyState : 'null');
+                console.error('Cannot send - WebSocket not open. ReadyState:', ws ? ws.readyState : 'null');
                 showMessage('Not connected to auction', 'error');
             }
         }
@@ -739,29 +790,39 @@
         // NTP-style time synchronization using formula: offset = ½((T2 - T1) + (T3 - T4))
         // Where: T1 = client send, T2 = server receive, T3 = server send, T4 = client receive
         function performNTPSync() {
+
+            // Prevent concurrent sync requests
             if (ntpSyncInProgress || !ws || ws.readyState !== WebSocket.OPEN) {
                 return;
             }
             
+            // Start NTP sync
             ntpSyncInProgress = true;
             const t1 = Date.now(); // Ti-3: Client send timestamp
             
+            // Send time sync request
             send({ type: 'time_sync', t1: t1 });
+
         }
         
+        // Handle NTP-style time sync response from server
         function handleTimeSyncResponse(msg) {
+
+            // Calculate NTP offset and delay
             const t4 = Date.now(); // Ti: Client receive timestamp
             const t1 = msg.t1;     // Ti-3: Client send timestamp (echoed back)
             const t2 = msg.t2;     // Ti-2: Server receive timestamp
             const t3 = msg.t3;     // Ti-1: Server send timestamp
             
-            // NTP clock offset formula: offset = ½((T2 - T1) + (T3 - T4))
-            // This is equivalent to: offset = ½(Ti-2 - Ti-3 + Ti-1 - Ti)
+            // NTP clock offset formula: offset = 1/2 ((T2 - T1) + (T3 - T4))
+            // This is equivalent to: offset = 1/2 (Ti-2 - Ti-3 + Ti-1 - Ti)
             const offset = 0.5 * ((t2 - t1) + (t3 - t4));
             
             // Round-trip delay: d = (T4 - T1) - (T3 - T2)
+            // computed only for information purposes
             const delay = (t4 - t1) - (t3 - t2);
             
+            // Store offset sample
             ntpOffsetSamples.push(offset);
             
             // Keep last 10 samples
@@ -769,11 +830,12 @@
                 ntpOffsetSamples.shift();
             }
             
-            // Calculate median offset (robust to outliers)
+            // Calculate median offset (robust to outliers), used for logging here
             const sortedOffsets = [...ntpOffsetSamples].sort((a, b) => a - b);
             const medianOffset = sortedOffsets[Math.floor(sortedOffsets.length / 2)];
             
-            console.log('🕐 NTP Sync:', {
+            // Log NTP sync results
+            console.log(' NTP Sync:', {
                 t1: t1, t2: t2, t3: t3, t4: t4,
                 offset: offset.toFixed(2) + 'ms',
                 delay: delay.toFixed(2) + 'ms',
@@ -783,18 +845,24 @@
             
             // Update server time difference using NTP offset (convert ms to seconds)
             serverTimeDiff = medianOffset / 1000;
-            
+
+            // Mutex release
             ntpSyncInProgress = false;
         }
         
+        // Place bid function - called when user clicks "Place Bid" button
         function placeBid() {
+
+            // Get bid amount from input
             const amount = parseFloat(document.getElementById('bidAmount').value);
             
+            // Validate bid amount
             if (!amount || amount <= 0) {
                 showMessage('Please enter a valid bid amount', 'error');
                 return;
             }
-            
+           
+            // Send place_bid message
             send({
                 type: 'place_bid',
                 auction_id: auctionId,
@@ -802,52 +870,16 @@
             });
         }
         
+        // Update auction info in the UI based on server state
         function updateAuctionInfo(state) {
+
+            
             // Update time sync when receiving server updates (only if not initialized or significant drift)
             if (state.server_time && state.auction_end_time) {
-                const clientTime = Math.floor(Date.now() / 1000);
-                let newServerTimeDiff;
-                let needsUpdate = false;
-                
-                // Only calculate if we need to update
-                if (serverTimeDiff === 0) {
-                    // First time sync - always calculate
-                    needsUpdate = true;
-                }
-                
-                if (needsUpdate) {
-                    // Prefer NTP offset if available, otherwise use RTT-based estimation
-                    if (ntpOffsetSamples.length > 0) {
-                        // Use NTP clock offset (already calculated as median)
-                        const sortedOffsets = [...ntpOffsetSamples].sort((a, b) => a - b);
-                        const medianOffset = sortedOffsets[Math.floor(sortedOffsets.length / 2)];
-                        newServerTimeDiff = medianOffset / 1000; // Convert ms to seconds
-                        console.log('🕐 Using NTP offset:', medianOffset.toFixed(2), 'ms');
-                    } else {
-                        // Fallback to RTT-based one-way latency estimation
-                        let oneWayLatency = 0;
-                        if (rttSamples.length > 0) {
-                            const sortedRTT = [...rttSamples].sort((a, b) => a - b);
-                            const medianRTT = sortedRTT[Math.floor(sortedRTT.length / 2)];
-                            oneWayLatency = medianRTT / 2000; // Convert to seconds
-                        }
-                        
-                        // Adjust server time by estimated network delay
-                        const adjustedServerTime = state.server_time + oneWayLatency;
-                        newServerTimeDiff = adjustedServerTime - clientTime;
-                        console.log('📡 Using RTT-based offset:', (oneWayLatency * 1000).toFixed(2), 'ms');
-                    }
-                    
-                    serverTimeDiff = newServerTimeDiff;
-                    
-                    // Print offset only when updating
-                    console.log('⏰ Time sync - Method:', ntpOffsetSamples.length > 0 ? 'NTP' : 'RTT');
-                    console.log('⏰ Current offset:', (serverTimeDiff * 1000).toFixed(2), 'ms');
-                    console.log('⏰ Server time:', state.server_time, 'Auction end:', state.auction_end_time);
-                }
-                
+
                 auctionEndTime = state.auction_end_time;
             }
+            
             
             // Start local countdown timer if not already running
             if (!timerInterval && auctionEndTime) {
@@ -867,6 +899,7 @@
                 remainingTime = Math.max(0, auctionEndTime - currentTime);
                 updateTimerDisplay();
             }
+            
             
             // Update bid count
             document.getElementById('bidCount').textContent = state.bid_count || 0;
@@ -901,6 +934,7 @@
             }
         }
         
+        // Update connection status UI
         function updateTimerDisplay() {
             const minutes = Math.floor(remainingTime / 60);
             const seconds = Math.floor(remainingTime % 60);
@@ -908,11 +942,13 @@
                 minutes + ':' + String(seconds).padStart(2, '0');
         }
         
+        // Update connection status UI
         function updateBalance(balance) {
             document.getElementById('userBalance').textContent = 
                 '$' + (balance || 0).toFixed(2);
         }
         
+        // Handle auction ended event
         function handleAuctionEnded(msg) {
             console.log('Auction ended:', msg);
             
@@ -997,10 +1033,15 @@
             }, 500);
         }
         
+        // Automatically join auction if not already joined
+        // Sends POST request to join-auction endpoint
         function joinAuctionAutomatically() {
-            console.log('🔄 AUTO-JOINING auction:', numericAuctionId);
+
+            // Log auto-join attempt
+            console.log('AUTO-JOINING auction:', numericAuctionId);
             updateConnectionStatus('connecting', 'Joining auction...');
             
+            // Send POST request to join auction
             fetch('${pageContext.request.contextPath}/join-auction', {
                 method: 'POST',
                 headers: {
@@ -1008,41 +1049,46 @@
                 },
                 body: 'auctionId=' + encodeURIComponent(numericAuctionId)
             })
+            // Handle response
             .then(response => {
-                console.log('📥 Join response status:', response.status);
+                console.log('Join response status:', response.status);
                 return response.json();
             })
+            // Process response data
             .then(data => {
-                console.log('📥 Join response data:', data);
+                console.log('Join response data:', data);
                 if (data.success) {
-                    console.log('✅ Join successful');
+                    console.log('Join successful');
                     console.log('JWT Token:', data.jwtToken ? data.jwtToken.substring(0, 30) + '...' : 'MISSING');
                     console.log('WebSocket URL:', data.websocketUrl);
                     // Store JWT token and WebSocket URL
                     localStorage.setItem('jwtToken_' + numericAuctionId, data.jwtToken);
                     localStorage.setItem('websocketUrl_' + numericAuctionId, data.websocketUrl);
-                    console.log('✅ Stored in localStorage, retrying connection...');
+                    console.log('Stored in localStorage, retrying connection...');
                     // Try to connect again
                     connect();
                 } else {
-                    console.error('❌ Join failed:', data.error);
+                    console.error('Join failed:', data.error);
                     showMessage('Error: ' + (data.error || 'Failed to join auction'), 'error');
                     updateConnectionStatus('disconnected', 'Join failed');
                 }
             })
+            // Handle fetch errors
             .catch(error => {
-                console.error('❌ Join error:', error);
+                console.error('Join error:', error);
                 showMessage('Error joining auction: ' + error.message, 'error');
                 updateConnectionStatus('disconnected', 'Join failed');
             });
         }
         
+        // Update connection status UI
         function updateConnectionStatus(status, message) {
             const statusDiv = document.getElementById('connectionStatus');
             statusDiv.className = 'connection-status ' + status;
             statusDiv.textContent = message;
         }
         
+        // Show message to user in message container
         function showMessage(text, type) {
             const container = document.getElementById('messageContainer');
             const msgDiv = document.createElement('div');
@@ -1056,17 +1102,23 @@
             }, 5000);
         }
         
-        // Connect when page loads
+
+        // =======================================
+        // Event Listeners
+        // =======================================
+
+        // Connect to the auction web socket when page loads
         console.log('🚀 PAGE LOADED - Initializing connection...');
         window.addEventListener('load', connect);
         
-        // Clean up on page unload
+        // Clean up auction web socket on page unload
         window.addEventListener('beforeunload', () => {
             console.log('🚪 Page unloading - closing WebSocket');
             if (ws) {
                 ws.close();
             }
         });
+        
     </script>
 </body>
 </html>
