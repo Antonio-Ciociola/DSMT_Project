@@ -14,7 +14,7 @@ import java.util.Optional;
 
 /**
  * API endpoint to finish an auction.
- * Accessible without authentication - intended for Erlang service to call.
+ * Authenticated via API key - intended for Erlang service to call.
  * Updates auction status to 'finished', sets winner, and transfers payment.
  */
 @WebServlet("/api/finish-auction")
@@ -22,6 +22,9 @@ public class FinishAuctionServlet extends HttpServlet {
 
     // Service instance to interact with auction data
     private final AuctionService auctionService = new AuctionService();
+    
+    // API key for authentication (should be same as ERLANG_API_KEY env variable)
+    private static final String API_KEY = System.getenv().getOrDefault("ERLANG_API_KEY", "auction_secret_key_2026");
 
     /**
      * POST /api/finish-auction
@@ -38,6 +41,17 @@ public class FinishAuctionServlet extends HttpServlet {
         
         // Set response content type to JSON
         response.setContentType("application/json;charset=UTF-8");
+        
+        // Validate API key
+        String providedKey = request.getHeader("X-API-Key");
+        if (providedKey == null || !providedKey.equals(API_KEY)) {
+            System.err.println("[FINISH-AUCTION] Unauthorized request - invalid or missing API key");
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            try (PrintWriter out = response.getWriter()) {
+                out.print("{\"error\": \"Unauthorized - Invalid API key\"}");
+            }
+            return;
+        }
         
         try {
             // Extract parameters

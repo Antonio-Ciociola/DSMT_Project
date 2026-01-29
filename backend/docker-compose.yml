@@ -15,6 +15,7 @@ services:
       MYSQL_DATABASE: auction_system     # Creates the database on startup with the given name
       MYSQL_USER: auction_user           # Creates a user with the given name
       MYSQL_PASSWORD: auction_password   # Sets the password for the above user
+      ERLANG_API_KEY: auction_secret_key_2026  # Shared API key for Erlang-Java communication
 
     ### Port mapping to expose MySQL on the host machine (default MySQL port 3306)
     # since communication with mysql is internal to the docker network there is no need to
@@ -60,6 +61,7 @@ services:
       NODE_NAME: auction
       NODE_ROLE: master
       HTTP_PORT: 8081
+      ERLANG_API_KEY: auction_secret_key_2026  # API key for authenticating with Java backend
     
     volumes:
       - erlang_master_data:/app/Mnesia.auction@erlang-master
@@ -91,6 +93,7 @@ services:
       NODE_ROLE: slave
       HTTP_PORT: 8082
       MASTER_NODE: auction@erlang-master
+      ERLANG_API_KEY: auction_secret_key_2026  # API key for authenticating with Java backend
     
     depends_on:
       erlang-master:
@@ -116,6 +119,7 @@ services:
       NODE_ROLE: slave
       HTTP_PORT: 8083
       MASTER_NODE: auction@erlang-master
+      ERLANG_API_KEY: auction_secret_key_2026  # API key for authenticating with Java backend
     
     depends_on:
       erlang-master:
@@ -150,6 +154,7 @@ services:
       DB_USER: auction_user
       DB_PASSWORD: auction_password
       JWT_SECRET: DSMT_PROJECT_SECRETKEY_MINIMUM_48_BYTES_FOR_HS384 # Secret key for JWT signing (must be >= 48 bytes for HS384)
+      ERLANG_API_KEY: auction_secret_key_2026  # API key for authenticating Erlang requests
 
     ### Service dependencies
     # Ensures that the backend service starts only after the MySQL service is healthy (i.e. 

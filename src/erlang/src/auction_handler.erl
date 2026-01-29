@@ -611,9 +611,15 @@ post_auction_finish_to_java(AuctionId, Winner, Amount, TotalDuration) ->
         
         io:format("[AUCTION ~p] POSTing to Java: ~p~n", [AuctionId, PostData]),
         
-        %% Make HTTP POST request
+        %% Get API key from environment or use default
+        ApiKey = os:getenv("ERLANG_API_KEY", "auction_secret_key_2026"),
+        
+        %% Make HTTP POST request with API key header
         case httpc:request(post, 
-                          {JavaUrl, [], "application/x-www-form-urlencoded", PostData},
+                          {JavaUrl, 
+                           [{"X-API-Key", ApiKey}],  % Add API key header
+                           "application/x-www-form-urlencoded", 
+                           PostData},
                           [{timeout, 5000}],
                           []) of
             {ok, {{_, 200, _}, _, ResponseBody}} ->
