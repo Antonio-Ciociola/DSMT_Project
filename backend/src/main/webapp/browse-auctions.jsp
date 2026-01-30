@@ -384,7 +384,7 @@
                                                 ⚡ Active Auction
                                             </button>
                                             <div style="margin-top: 8px; font-size: 12px; color: #28a745; text-align: center;">
-                                                You are currently bidding in this auction
+                                                You are currently participating in this auction
                                             </div>
                                         </c:when>
                                         <c:when test="${not empty currentAuctionIdBidding and currentAuctionIdBidding != auction.id}">
