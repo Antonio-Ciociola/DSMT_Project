@@ -910,15 +910,17 @@
             // Update highest bid
             if (state.highest_bid && state.highest_bid !== 'none') {
                 document.getElementById('highestBidCard').style.display = 'block';
+                const highestAmount = Number(state.highest_bid.amount);
                 document.getElementById('highestBidAmount').textContent = 
-                    '$' + state.highest_bid.amount.toFixed(2);
+                    '$' + highestAmount.toFixed(2);
                 document.getElementById('highestBidder').textContent = 
                     'by ' + state.highest_bid.username;
                 
                 // Suggest next bid amount (only if bidAmount element exists - not for guests)
                 const bidAmountEl = document.getElementById('bidAmount');
                 if (bidAmountEl) {
-                    const minNextBid = state.highest_bid.amount + ${auction.minBidIncrement};
+                    const bidIncrement = Number(state.bid_increment || ${auction.minBidIncrement});
+                    const minNextBid = highestAmount + bidIncrement;
                     bidAmountEl.value = minNextBid.toFixed(2);
                     bidAmountEl.min = minNextBid;
                 }
@@ -928,8 +930,9 @@
                 // Set starting price (only if bidAmount element exists - not for guests)
                 const bidAmountEl = document.getElementById('bidAmount');
                 if (bidAmountEl) {
-                    bidAmountEl.value = ${auction.startingPrice};
-                    bidAmountEl.min = ${auction.startingPrice};
+                    const minBid = Number(state.min_bid || ${auction.startingPrice});
+                    bidAmountEl.value = minBid.toFixed(2);
+                    bidAmountEl.min = minBid;
                 }
             }
         }

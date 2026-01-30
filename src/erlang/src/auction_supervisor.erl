@@ -80,7 +80,21 @@ init([]) ->
         modules => [server]
     },
     
-    ChildSpecs = [HttpServerChild, ServerChild],
+    %% Health monitor child specification (only on master node)
+    HealthMonitorChild = #{
+        id => health_monitor,
+        start => {health_monitor, start_link, []},
+        restart => permanent,  % Always restart
+        shutdown => 5000,
+        type => worker,
+        modules => [health_monitor]
+    },
+    
+    %% Only start health monitor on master node
+    ChildSpecs = case Role of
+        master -> [HttpServerChild, ServerChild, HealthMonitorChild];
+        _ -> [HttpServerChild, ServerChild]
+    end,
     
     {ok, {SupFlags, ChildSpecs}}.
 

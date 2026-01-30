@@ -314,8 +314,8 @@ public class AuctionDao {
         }
     }
 
-    // Update auction WebSocket URL
-    public void updateWebsocketUrl(int auctionId, String websocketUrl) throws SQLException {
+    // Update auction WebSocket URL (returns true if auction was found and updated)
+    public boolean updateWebsocketUrl(String auctionId, String websocketUrl) throws SQLException {
         String sql = "UPDATE auctions SET websocket_url = ? WHERE id = ?";
         
         try (
@@ -323,12 +323,10 @@ public class AuctionDao {
             PreparedStatement pstmt = conn.prepareStatement(sql)
         ) {
             pstmt.setString(1, websocketUrl);
-            pstmt.setInt(2, auctionId);
+            pstmt.setString(2, auctionId);
             
             int rowsUpdated = pstmt.executeUpdate();
-            if (rowsUpdated == 0) {
-                throw new SQLException("Auction not found with id: " + auctionId);
-            }
+            return rowsUpdated > 0;
         }
     }
 }

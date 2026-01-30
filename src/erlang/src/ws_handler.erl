@@ -146,10 +146,12 @@ websocket_handle({text, Json}, State) ->
     io:format("[WS] Received message: ~p~n", [Json]),
     try
         Msg = jsx:decode(Json, [return_maps]),
+        io:format("[WS] Decoded message: ~p~n", [Msg]),
         handle_message(Msg, State)
     catch
         Type:Error:Stacktrace ->
             io:format("[WS] Error processing message: ~p:~p~nStacktrace: ~p~n", [Type, Error, Stacktrace]),
+            io:format("[WS] Original JSON: ~p~n", [Json]),
             ErrorResp = jsx:encode(#{
                 type => <<"error">>,
                 message => <<"Invalid JSON format">>
@@ -262,6 +264,8 @@ handle_message(#{<<"type">> := <<"connect_auction">>,
 %% Place bid
 handle_message(#{<<"type">> := <<"place_bid">>,
                  <<"amount">> := Amount}, State) ->
+    io:format("[WS] place_bid handler - Amount: ~p, User: ~p, AuctionId: ~p~n", 
+             [Amount, State#state.user_id, State#state.auction_id]),
     case State#state.user_id of
         undefined ->
             error_response(<<"Not authenticated">>, State);
@@ -281,6 +285,8 @@ handle_message(#{<<"type">> := <<"place_bid">>,
                         undefined ->
                             error_response(<<"No auction associated with this connection">>, State);
                         AuctionId ->
+                            io:format("[WS] Calling server:place_bid(~p, ~p, ~p)~n",
+                                     [AuctionId, Username, Amount]),
                             case server:place_bid(binary_to_list(AuctionId), 
                                                  binary_to_list(Username), 
                                                  Amount) of
@@ -291,6 +297,7 @@ handle_message(#{<<"type">> := <<"place_bid">>,
                                     }),
                                     {reply, {text, Response}, State};
                                 {error, Reason} ->
+                                    io:format("[WS] Bid rejected: ~p~n", [Reason]),
                                     Response = jsx:encode(#{
                                         type => <<"place_bid_response">>,
                                         success => false,

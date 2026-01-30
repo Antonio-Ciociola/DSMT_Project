@@ -74,6 +74,15 @@ start_master_node(Port) ->
     
     %% Set role to master
     application:set_env(auction_app, node_role, master),
+    
+    %% Configure slave nodes to monitor (based on docker-compose setup)
+    SlaveNodes = [
+        {'auction_slave1@erlang-slave1', 8082},
+        {'auction_slave2@erlang-slave2', 8083}
+    ],
+    application:set_env(auction_app, slave_nodes, SlaveNodes),
+    io:format("[APP] Configured slave nodes to monitor: ~p~n", [SlaveNodes]),
+    
     start_node_internal(Port).
 
 %% @doc Start slave node (must provide master node for clustering)

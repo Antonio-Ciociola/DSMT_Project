@@ -25,6 +25,7 @@
     %% External POST endpoints
     register_auction/5,
     register_auction_user/3,
+    start_migrated_auction/2,
     
     %% Auction management
     cancel_auction/1,
@@ -93,6 +94,10 @@ register_auction(AuctionId, StartingPrice, MinDuration, MinIncrementBid, TimeInc
 %% @doc Register a user as active for an auction from external POST endpoint
 register_auction_user(AuctionId, UserId, Balance) ->
     gen_server:call(?MODULE, {register_auction_user, AuctionId, UserId, Balance}).
+
+%% @doc Start a migrated auction on a new slave node
+start_migrated_auction(AuctionId, RemainingTime) ->
+    gen_server:call(?MODULE, {start_migrated_auction, AuctionId, RemainingTime}).
 
 %% @doc Cancel an auction (must be in waiting state)
 cancel_auction(AuctionId) ->
@@ -298,6 +303,36 @@ handle_call({register_auction_user, AuctionId, UserId, Balance}, _From, State) -
             {reply, Error, State}
     end;
 
+handle_call({start_migrated_auction, AuctionId, RemainingTime}, _From, State) ->
+    io:format("[SERVER] Starting migrated auction ~p with ~p seconds remaining~n", 
+             [AuctionId, RemainingTime]),
+    
+    %% Get auction data from Mnesia
+    case mnesia_db:get_auction(AuctionId) of
+        {ok, Auction} ->
+            %% Extract bid_time_increment from auction record (element 10)
+            TimeIncrementBid = element(10, Auction),
+            
+            io:format("[SERVER] Starting auction_handler for ~p with TimeIncrementBid=~p~n",
+                     [AuctionId, TimeIncrementBid]),
+            
+            %% Start auction handler with the remaining time
+            %% The handler will initialize from Mnesia and resume with remaining time
+            case auction_supervisor:start_auction_handler(AuctionId, 0, TimeIncrementBid) of
+                {ok, Pid} ->
+                    NewHandlers = [{AuctionId, Pid} | State#state.auction_handlers],
+                    io:format("[SERVER] Migrated auction handler started: ~p -> ~p~n", [AuctionId, Pid]),
+                    io:format("[SERVER] Updated auction_handlers list: ~p~n", [NewHandlers]),
+                    {reply, ok, State#state{auction_handlers = NewHandlers}};
+                Error ->
+                    io:format("[SERVER] Failed to start migrated auction handler: ~p~n", [Error]),
+                    {reply, {error, handler_failed}, State}
+            end;
+        Error ->
+            io:format("[SERVER] Failed to get auction data: ~p~n", [Error]),
+            {reply, Error, State}
+    end;
+
 %%%===================================================================
 %%% Auction interaction handlers
 %%%===================================================================
@@ -315,9 +350,11 @@ handle_call({start_auction, AuctionId}, _From, State) ->
 
 handle_call({connect_auction, AuctionId, Username, Role}, {ClientPid, _Tag}, State) ->
     io:format("[SERVER] Connecting ~p to auction ~p as ~p~n", [Username, AuctionId, Role]),
+    io:format("[SERVER] Current auction_handlers: ~p~n", [State#state.auction_handlers]),
     
     case lists:keyfind(AuctionId, 1, State#state.auction_handlers) of
         {AuctionId, Pid} ->
+            io:format("[SERVER] Found handler for ~p: ~p~n", [AuctionId, Pid]),
             Result = case Role of
                 participant ->
                     auction_handler:join_as_participant(Pid, Username, ClientPid);
@@ -329,6 +366,7 @@ handle_call({connect_auction, AuctionId, Username, Role}, {ClientPid, _Tag}, Sta
             NewUsers = [{Username, ClientPid} | State#state.connected_users],
             {reply, Result, State#state{connected_users = NewUsers}};
         false ->
+            io:format("[SERVER] Auction ~p NOT FOUND in handlers list~n", [AuctionId]),
             {reply, {error, auction_not_found}, State}
     end;
 

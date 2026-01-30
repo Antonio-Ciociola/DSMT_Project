@@ -40,6 +40,8 @@
     get_auction_assignment/1,
     get_slave_auction_count/1,
     get_least_loaded_slave/1,
+    get_auctions_by_slave_node/1,
+    delete_auction_assignment/1,
     
     %% Bid operations
     add_bid/4,
@@ -461,6 +463,31 @@ cancel_auction(AuctionId) ->
     end,
     case mnesia:transaction(F) of
         {atomic, Result} -> Result;
+        {aborted, Reason} -> {error, Reason}
+    end.
+
+%% @doc Get all auctions assigned to a specific slave node
+get_auctions_by_slave_node(SlaveNode) ->
+    F = fun() ->
+        Assignments = mnesia:match_object(#auction_assignment{
+            auction_id = '_',
+            slave_node = SlaveNode,
+            slave_port = '_'
+        }),
+        [AuctionId || #auction_assignment{auction_id = AuctionId} <- Assignments]
+    end,
+    case mnesia:transaction(F) of
+        {atomic, Result} -> {ok, Result};
+        {aborted, Reason} -> {error, Reason}
+    end.
+
+%% @doc Delete auction assignment (used during migration)
+delete_auction_assignment(AuctionId) ->
+    F = fun() ->
+        mnesia:delete({auction_assignment, AuctionId})
+    end,
+    case mnesia:transaction(F) of
+        {atomic, _} -> ok;
         {aborted, Reason} -> {error, Reason}
     end.
 

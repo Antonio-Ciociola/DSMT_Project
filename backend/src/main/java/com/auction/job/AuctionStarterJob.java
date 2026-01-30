@@ -49,7 +49,7 @@ public class AuctionStarterJob implements Job {
             
             // Save WebSocket URL to database
             if (websocketUrl != null) {
-                auctionDao.updateWebsocketUrl(auctionId, websocketUrl);
+                auctionDao.updateWebsocketUrl(String.valueOf(auctionId), websocketUrl);
                 System.out.println("Saved WebSocket URL for auction " + auctionId + ": " + websocketUrl);
             }
             
