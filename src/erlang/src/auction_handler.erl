@@ -112,15 +112,56 @@ init([AuctionId, MinIncrementBid, TimeIncrementBid]) ->
     case mnesia_db:get_auction(AuctionId) of
         {ok, Auction} ->
             StartTime = element(7, Auction),  % start_time field
-            Duration = element(6, Auction),   % duration field
+            BaseDuration = element(6, Auction),   % duration field
+            StoredBidTimeIncrement = element(10, Auction), % bid_time_increment checkpoint (element 10)
             CurrentTime = erlang:system_time(second),
             
-            %% Calculate status based on timestamps
-            Status = calculate_status(StartTime, Duration, CurrentTime),
+            %% Load bid history from Mnesia for state recovery
+            {BidHistory, HighestBid, BidCount} = case mnesia_db:get_auction_bids(AuctionId) of
+                {ok, Bids} when length(Bids) > 0 ->
+                    io:format("[AUCTION ~p] Loaded ~p bids from checkpoint~n", 
+                              [AuctionId, length(Bids)]),
+                    %% Convert bid records to tuples: {Username, Amount, Timestamp}
+                    BidTuples = lists:map(fun(Bid) ->
+                        Username = element(4, Bid),  % bid.username
+                        Amount = element(5, Bid),    % bid.amount
+                        Timestamp = element(6, Bid), % bid.timestamp
+                        {Username, Amount, Timestamp}
+                    end, Bids),
+                    %% Find highest bid
+                    SortedBids = lists:sort(fun({_, A1, _}, {_, A2, _}) -> A1 >= A2 end, BidTuples),
+                    case SortedBids of
+                        [{User, Amount, Time} | _] ->
+                            {BidTuples, {User, Amount, Time}, length(Bids)};
+                        [] ->
+                            {[], none, 0}
+                    end;
+                _ ->
+                    {[], none, 0}
+            end,
+            
+            %% Use stored bid_time_increment if available (migration case), otherwise use parameter
+            ActualTimeIncrementBid = if
+                StoredBidTimeIncrement > 0 ->
+                    io:format("[AUCTION ~p] Loading checkpoint: bid_time_increment=~p, bid_count=~p~n", 
+                              [AuctionId, StoredBidTimeIncrement, BidCount]),
+                    StoredBidTimeIncrement;
+                true ->
+                    TimeIncrementBid
+            end,
+            
+            %% Calculate total duration based on bids: base_duration + (bid_count * time_increment_bid)
+            TotalDuration = BaseDuration + (BidCount * ActualTimeIncrementBid),
             
             %% Calculate remaining time
-            EndTime = StartTime + Duration,
+            EndTime = StartTime + TotalDuration,
             RemainingTime = max(0, EndTime - CurrentTime),
+            
+            %% Calculate status based on timestamps
+            Status = calculate_status(StartTime, TotalDuration, CurrentTime),
+            
+            io:format("[AUCTION ~p] Calculated: base_duration=~p, bids=~p, time_per_bid=~p, total_duration=~p, remaining=~p~n",
+                      [AuctionId, BaseDuration, BidCount, ActualTimeIncrementBid, TotalDuration, RemainingTime]),
             
             State = #state{
                 auction_id = AuctionId,
@@ -128,16 +169,16 @@ init([AuctionId, MinIncrementBid, TimeIncrementBid]) ->
                 creator = element(3, Auction),         % creator field
                 min_bid = element(5, Auction),         % min_bid field
                 bid_increment = MinIncrementBid,
-                duration = Duration,
-                total_duration = Duration,             % Initialize with base duration
+                duration = BaseDuration,
+                total_duration = TotalDuration,
                 remaining_time = RemainingTime,
                 start_time = StartTime,
                 status = Status,
                 participants = [],
                 spectators = [],
-                bids = [],
-                highest_bid = none,
-                time_increment_bid = TimeIncrementBid
+                bids = BidHistory,
+                highest_bid = HighestBid,
+                time_increment_bid = ActualTimeIncrementBid
             },
             
             %% Start timer if auction is active
@@ -353,6 +394,16 @@ handle_info(tick, State) ->
                     
                     %% Schedule next tick
                     TimerRef = erlang:send_after(1000, self(), tick),
+                    
+                    %% Save checkpoint every 5 seconds: store bid_time_increment
+                    case NewRemainingTime rem 5 of
+                        0 ->
+                            io:format("[AUCTION ~p] Saving checkpoint: bid_time_increment=~p~n", 
+                                      [State#state.auction_id, State#state.time_increment_bid]),
+                            mnesia_db:update_auction_bid_time_increment(State#state.auction_id, 
+                                                                        State#state.time_increment_bid);
+                        _ -> ok
+                    end,
                     
                     %% Broadcast time update every 5 seconds or when close to end
                     ShouldBroadcast = (NewRemainingTime rem 5 == 0) orelse (NewRemainingTime < 10),

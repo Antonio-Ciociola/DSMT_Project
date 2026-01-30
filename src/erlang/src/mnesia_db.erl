@@ -61,7 +61,8 @@
     duration,           % Duration in seconds
     start_time,         % Timestamp when auction starts
     winner = none,      % Username of winner
-    winning_bid = 0.0
+    winning_bid = 0.0,
+    bid_time_increment = 0  % Seconds added per bid
 }).
 
 -record(auction_assignment, {
@@ -334,7 +335,7 @@ withdraw_balance(_Username, _Amount) ->
 %%%===================================================================
 
 %% @doc Create a new auction
-add_auction(AuctionId, Creator, ItemName, MinBid, _BidIncrement, Duration, StartTime) ->
+add_auction(AuctionId, Creator, ItemName, MinBid, BidIncrement, Duration, StartTime) ->
     F = fun() ->
         case mnesia:read(auction, AuctionId) of
             [] ->
@@ -349,7 +350,8 @@ add_auction(AuctionId, Creator, ItemName, MinBid, _BidIncrement, Duration, Start
                     item_name = ItemName,
                     min_bid = MinBid,
                     duration = Duration,
-                    start_time = ActualStartTime
+                    start_time = ActualStartTime,
+                    bid_time_increment = BidIncrement
                 },
                 mnesia:write(Auction),
                 {ok, AuctionId};
