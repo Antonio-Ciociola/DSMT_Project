@@ -28,24 +28,24 @@
 %%% Application callbacks
 %%%===================================================================
 
+% Callback to start the application
 start(_StartType, _StartArgs) ->
+
+    %% Log application start
     io:format("[APP] Starting auction application~n"),
     
-    %% Get node role and port
+    %% Get node role and port - supervisor will read these
     Role = application:get_env(auction_app, node_role, master),
     Port = application:get_env(auction_app, http_port, 8081),
     
+    %% Log node role and port
     io:format("[APP] Node role: ~p~n", [Role]),
-    io:format("[APP] Starting HTTP server on port ~p~n", [Port]),
+    io:format("[APP] HTTP server will start on port ~p~n", [Port]),
     
-    %% Start appropriate HTTP server based on role
-    case Role of
-        master -> http_server:start_master(Port);
-        slave -> http_server:start_slave(Port)
-    end,
-    
+    %% Start supervisor (which will start HTTP server and server.erl)
     auction_supervisor:start_link().
 
+% Callback to stop the application
 stop(_State) ->
     io:format("[APP] Stopping auction application~n"),
     catch http_server:stop(),
@@ -78,10 +78,14 @@ start_master_node(Port) ->
 
 %% @doc Start slave node (must provide master node for clustering)
 start_slave_node(Port) ->
+    %% erlang-master is the host name, solved by Docker DNS whereas 
+    %% auction is the node name on that machine
     start_slave_node(Port, 'auction@erlang-master').
 
 %% @doc Start slave node with custom port and master node
 start_slave_node(Port, MasterNode) ->
+
+    %% Log slave startup
     io:format("~n===========================================~n"),
     io:format("  STARTING SLAVE NODE~n"),
     io:format("  Node: ~p~n", [node()]),
@@ -186,7 +190,7 @@ start_node_internal(Port) ->
     io:format("[APP] WebSocket: ws://localhost:~p/ws~n", [Port]),
     io:format("[APP] Health check: http://localhost:~p/health~n~n", [Port]).
 
-%% @doc Join an existing cluster
+%% @doc Join an existing cluster abd replicate Mnesia data
 join_cluster(RemoteNode) ->
     io:format("~n===========================================~n"),
     io:format("  JOINING CLUSTER~n"),
@@ -224,6 +228,7 @@ join_cluster(RemoteNode) ->
             io:format("[APP] Schema copy warning: ~p~n", [SchemaError])
     end,
     
+    %% Copy all other tables
     Tables = mnesia:system_info(tables) -- [schema],
     lists:foreach(fun(Table) ->
         case mnesia:add_table_copy(Table, node(), disc_copies) of

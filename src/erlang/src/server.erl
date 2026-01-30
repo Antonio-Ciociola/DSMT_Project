@@ -203,8 +203,8 @@ handle_call({create_auction, Creator, ItemName, MinBid, BidIncrement, Duration, 
     %% Create auction in database
     case mnesia_db:add_auction(AuctionId, Creator, ItemName, MinBid, BidIncrement, Duration, StartTime) of
         {ok, _} ->
-            %% Start auction handler process (use BidIncrement, no time increment for legacy)
-            case auction_handler:start_link(AuctionId, BidIncrement, 0) of
+            %% Start auction handler process under supervision
+            case auction_supervisor:start_auction_handler(AuctionId, BidIncrement, 0) of
                 {ok, Pid} ->
                     NewHandlers = [{AuctionId, Pid} | State#state.auction_handlers],
                     io:format("[SERVER] Auction handler started: ~p -> ~p~n", [AuctionId, Pid]),
@@ -256,8 +256,8 @@ handle_call({register_auction, AuctionId, StartingPrice, MinDuration, MinIncreme
     StartTime = erlang:system_time(second),
     case mnesia_db:add_auction(AuctionId, "system", AuctionId, StartingPrice, 0, MinDuration, StartTime) of
         {ok, _} ->
-            %% Start auction handler process with additional parameters
-            case auction_handler:start_link(AuctionId, MinIncrementBid, TimeIncrementBid) of
+            %% Start auction handler process under supervision
+            case auction_supervisor:start_auction_handler(AuctionId, MinIncrementBid, TimeIncrementBid) of
                 {ok, Pid} ->
                     NewHandlers = [{AuctionId, Pid} | State#state.auction_handlers],
                     io:format("[SERVER] Auction handler started: ~p -> ~p~n", [AuctionId, Pid]),

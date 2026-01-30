@@ -8,11 +8,22 @@
 -module(http_server).
 -author("auction_system").
 
--export([start/0, start/1, start_master/1, start_slave/1, stop/0]).
+-export([start/0, start/1, start_link/2, start_master/1, start_slave/1, stop/0]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
+
+%% @doc Start the HTTP server under supervision
+start_link(Role, Port) ->
+    io:format("[HTTP] start_link called with Role=~p, Port=~p~n", [Role, Port]),
+    case Role of
+        master -> start_master(Port);
+        slave -> start_slave(Port)
+    end,
+    %% Return a dummy supervisor-compatible result
+    %% Cowboy manages its own process tree, so we return ignore
+    ignore.
 
 %% @doc Start the HTTP server on default port 8081 (auto-detect role)
 start() ->

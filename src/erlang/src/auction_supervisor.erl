@@ -13,7 +13,7 @@
 %% API
 -export([
     start_link/0,
-    start_auction_handler/1
+    start_auction_handler/3
 ]).
 
 %% Supervisor callbacks
@@ -30,10 +30,10 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 %% @doc Dynamically start an auction handler under supervision
-start_auction_handler(AuctionId) ->
+start_auction_handler(AuctionId, MinIncrementBid, TimeIncrementBid) ->
     ChildSpec = #{
         id => {auction_handler, AuctionId},
-        start => {auction_handler, start_link, [AuctionId]},
+        start => {auction_handler, start_link, [AuctionId, MinIncrementBid, TimeIncrementBid]},
         restart => transient,  % Only restart if abnormal termination
         shutdown => 5000,
         type => worker,
@@ -48,10 +48,26 @@ start_auction_handler(AuctionId) ->
 init([]) ->
     io:format("[SUPERVISOR] Initializing~n"),
     
+    %% Get node role and port from application environment
+    Role = application:get_env(auction_app, node_role, master),
+    Port = application:get_env(auction_app, http_port, 8081),
+    
+    io:format("[SUPERVISOR] Starting with Role=~p, Port=~p~n", [Role, Port]),
+    
     SupFlags = #{
         strategy => one_for_one,  % Restart only failed child
         intensity => 10,          % Max 10 restarts
         period => 60              % Within 60 seconds
+    },
+    
+    %% HTTP server child specification
+    HttpServerChild = #{
+        id => http_server,
+        start => {http_server, start_link, [Role, Port]},
+        restart => permanent,  % Always restart
+        shutdown => 5000,
+        type => worker,
+        modules => [http_server]
     },
     
     %% Main server child specification
@@ -64,7 +80,7 @@ init([]) ->
         modules => [server]
     },
     
-    ChildSpecs = [ServerChild],
+    ChildSpecs = [HttpServerChild, ServerChild],
     
     {ok, {SupFlags, ChildSpecs}}.
 
